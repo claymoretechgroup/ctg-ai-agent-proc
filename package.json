@@ -1,0 +1,48 @@
+{
+  "name": "ctg-ai-agent-proc",
+  "version": "0.1.0",
+  "description": "A deterministic orchestrator for agentic work using an asynchronous task queue",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "check": "tsc --noEmit",
+    "clean": "node scripts/clean-dist.mjs",
+    "compile": "tsc",
+    "compile:package": "tsc -p tsconfig.package.json",
+    "minify": "node scripts/minify-dist.mjs",
+    "build": "run-s clean compile",
+    "build:package": "run-s clean compile:package minify",
+    "prepare": "npm run build:package",
+    "test": "tsx tests/test.ts",
+    "recompile": "tsc --watch",
+    "watch": "tsx watch tests/test.ts",
+    "dev": "run-p recompile watch"
+  },
+  "keywords": [],
+  "author": "claymoretechgroup",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/claymoretechgroup/ctg-ai-agent-proc.git"
+  },
+  "homepage": "https://github.com/claymoretechgroup/ctg-ai-agent-proc#readme",
+  "bugs": "https://github.com/claymoretechgroup/ctg-ai-agent-proc/issues",
+  "devDependencies": {
+    "@types/node": "^26.2.0",
+    "ctg-js-test": "github:claymoretechgroup/ctg-js-test#v4.0.0",
+    "esbuild": "^0.28.2",
+    "npm-run-all": "^4.1.5",
+    "tsx": "^4.23.11",
+    "typescript": "^7.0.2"
+  }
+}

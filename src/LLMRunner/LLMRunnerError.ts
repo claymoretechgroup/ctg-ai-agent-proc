@@ -1,3 +1,10 @@
+/**
+ * 
+ *  Types 
+ * 
+ */
+
+// Defines details that can be attached to runner errors:
 export interface LLMRunnerErrorData {
     command?: string;
     args?: string[];
@@ -9,6 +16,9 @@ export interface LLMRunnerErrorData {
     cause?: unknown;
 }
 
+// Defines callback used to format runner error log output:
+export type LLMRunnerErrorLogFormatter = (error: LLMRunnerError) => string;
+
 const RUNNER_ERROR_TYPES = Object.freeze({
     INVALID_OPTIONS: 1001,
     COMMAND_NOT_FOUND: 1002,
@@ -18,6 +28,13 @@ const RUNNER_ERROR_TYPES = Object.freeze({
     1003: "COMMAND_FAILED"
 });
 
+/**
+ * 
+ *  Class 
+ * 
+ */
+
+// Structured error thrown for LLM runner failures:
 export class LLMRunnerError extends Error {
 
     /* Static Fields */
@@ -44,9 +61,34 @@ export class LLMRunnerError extends Error {
 
     /**
      *
+     * Instance Methods
+     *
+     */
+
+    // Writes error details to stderr and returns the written output:
+    log(formatter: LLMRunnerErrorLogFormatter = LLMRunnerError.formatLog): string {
+        const output = formatter(this);
+
+        console.error(output);
+
+        return output;
+    }
+
+    /**
+     *
      * Static Methods
      *
      */
+
+    // Formats error details for log output:
+    static formatLog(error: LLMRunnerError): string {
+        return JSON.stringify({
+            name: error.name,
+            type: error.type,
+            msg: error.msg,
+            data: error.data
+        });
+    }
 
     static is(value: unknown): value is LLMRunnerError {
         return value instanceof LLMRunnerError;

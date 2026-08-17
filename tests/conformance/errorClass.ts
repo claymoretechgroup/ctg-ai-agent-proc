@@ -1,5 +1,22 @@
 import CTGTest, { CTGTestPredicates as P } from "ctg-js-test";
-import { LLMRunnerError } from "../../src/index.ts";
+import { LLMPromptError, LLMRunnerError } from "../../src/index.ts";
+
+const captureErrorLog = (fn: () => string): {output: string, logged: string} => {
+    const original = console.error;
+    let logged = "";
+
+    console.error = (value?: unknown): void => {
+        logged = String(value);
+    };
+
+    try {
+        const output = fn();
+
+        return {output, logged};
+    } finally {
+        console.error = original;
+    }
+};
 
 export default CTGTest.init("error class")
     .assert("types map is bidirectional", () => {
@@ -31,4 +48,52 @@ export default CTGTest.init("error class")
     .assert("is narrows runner errors", () => {
         return LLMRunnerError.is(new LLMRunnerError("INVALID_OPTIONS", "Invalid."))
             && !LLMRunnerError.is(new Error("native"));
+    }, P.isTrue())
+    .assert("runner error log writes default output", () => {
+        const err = new LLMRunnerError("COMMAND_FAILED", "Command failed.", {
+            command: "tool"
+        });
+        const log = captureErrorLog(() => err.log());
+        const parsed = JSON.parse(log.output);
+
+        return log.logged === log.output
+            && parsed.name === "LLMRunnerError"
+            && parsed.type === "COMMAND_FAILED"
+            && parsed.msg === "Command failed."
+            && parsed.data.command === "tool";
+    }, P.isTrue())
+    .assert("runner error log accepts custom formatter", () => {
+        const err = new LLMRunnerError("COMMAND_NOT_FOUND", "Missing command.", {
+            command: "missing"
+        });
+        const log = captureErrorLog(() => err.log((value) => {
+            return `${value.type}:${value.data.command}`;
+        }));
+
+        return log.output === "COMMAND_NOT_FOUND:missing"
+            && log.logged === "COMMAND_NOT_FOUND:missing";
+    }, P.isTrue())
+    .assert("prompt error log writes default output", () => {
+        const err = new LLMPromptError("READ_FAILED", "Read failed.", {
+            path: "prompt.txt"
+        });
+        const log = captureErrorLog(() => err.log());
+        const parsed = JSON.parse(log.output);
+
+        return log.logged === log.output
+            && parsed.name === "LLMPromptError"
+            && parsed.type === "READ_FAILED"
+            && parsed.msg === "Read failed."
+            && parsed.data.path === "prompt.txt";
+    }, P.isTrue())
+    .assert("prompt error log accepts custom formatter", () => {
+        const err = new LLMPromptError("TEMPLATE_VALUE_NOT_FOUND", "Missing value.", {
+            key: "name"
+        });
+        const log = captureErrorLog(() => err.log((value) => {
+            return `${value.type}:${value.data.key}`;
+        }));
+
+        return log.output === "TEMPLATE_VALUE_NOT_FOUND:name"
+            && log.logged === "TEMPLATE_VALUE_NOT_FOUND:name";
     }, P.isTrue());

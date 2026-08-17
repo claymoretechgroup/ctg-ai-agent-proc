@@ -14,5 +14,6 @@ export type {
 } from "./LLMPrompt.js";
 
 export type {
+    LLMPromptErrorLogFormatter,
     LLMPromptErrorData
 } from "./LLMPromptError.js";

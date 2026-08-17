@@ -12,6 +12,7 @@ export {
 
 export type {
     LLMPromptErrorData,
+    LLMPromptErrorLogFormatter,
     LLMPromptTemplate,
     LLMPromptTemplateDelimiter,
     LLMPromptTemplateOptions,
@@ -21,6 +22,7 @@ export type {
 export type {
     LLMPromptConfig,
     LLMRunnerErrorData,
+    LLMRunnerErrorLogFormatter,
     LLMRunnerConfig,
     LLMRunnerResult
 } from "./LLMRunner/index.js";

@@ -17,5 +17,6 @@ export type {
 } from "./LLMRunner.js";
 
 export type {
+    LLMRunnerErrorLogFormatter,
     LLMRunnerErrorData
 } from "./LLMRunnerError.js";

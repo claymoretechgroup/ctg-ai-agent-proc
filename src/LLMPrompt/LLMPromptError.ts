@@ -1,3 +1,10 @@
+/**
+ * 
+ *  Types 
+ * 
+ */
+
+// Defines details that can be attached to prompt errors:
 export interface LLMPromptErrorData {
     path?: string;
     key?: string;
@@ -5,6 +12,9 @@ export interface LLMPromptErrorData {
     operationType?: string;
     cause?: unknown;
 }
+
+// Defines callback used to format prompt error log output:
+export type LLMPromptErrorLogFormatter = (error: LLMPromptError) => string;
 
 const LLM_PROMPT_ERROR_TYPES = Object.freeze({
     INVALID_OPTIONS: 1001,
@@ -17,6 +27,13 @@ const LLM_PROMPT_ERROR_TYPES = Object.freeze({
     1004: "UNKNOWN_OPERATION"
 });
 
+/**
+ * 
+ *  Class 
+ * 
+ */
+
+// Structured error thrown for LLM prompt construction failures:
 export class LLMPromptError extends Error {
 
     /* Static Fields */
@@ -43,9 +60,34 @@ export class LLMPromptError extends Error {
 
     /**
      *
+     * Instance Methods
+     *
+     */
+
+    // Writes error details to stderr and returns the written output:
+    log(formatter: LLMPromptErrorLogFormatter = LLMPromptError.formatLog): string {
+        const output = formatter(this);
+
+        console.error(output);
+
+        return output;
+    }
+
+    /**
+     *
      * Static Methods
      *
      */
+
+    // Formats error details for log output:
+    static formatLog(error: LLMPromptError): string {
+        return JSON.stringify({
+            name: error.name,
+            type: error.type,
+            msg: error.msg,
+            data: error.data
+        });
+    }
 
     static is(value: unknown): value is LLMPromptError {
         return value instanceof LLMPromptError;

@@ -64,4 +64,7 @@ export default CTGTest.init("runner")
     }, P.equals(["--default", "--init", "--prompt-arg", "PROMPT"]))
     .assert("static init returns subclass instance", () => {
         return ReportingRunner.init({}) instanceof ReportingRunner;
+    }, P.isTrue())
+    .assert("static init supports omitted config when constructor supports it", () => {
+        return ReportingRunner.init() instanceof ReportingRunner;
     }, P.isTrue());

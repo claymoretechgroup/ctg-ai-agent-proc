@@ -22,6 +22,9 @@ export default CTGTest.init("codex runner")
 
         return (runner as unknown as { config: { command: string } }).config.command;
     }, P.equals("codex"))
+    .assert("static init supports omitted config", () => {
+        return CodexRunner.init() instanceof CodexRunner;
+    }, P.isTrue())
     .assert("adds codex defaults before constructor args", async () => {
         const runner = new CodexRunner({
             command: "echo",

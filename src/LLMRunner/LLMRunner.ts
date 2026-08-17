@@ -106,11 +106,21 @@ export default class LLMRunner {
 
     // Static Factory Method \\
     // NOTE: Uses the static `this` constructor so inherited factories return the subclass type.
-    static init<C extends LLMRunnerConfig, T extends LLMRunner>(
-      this: new (config: C) => T,
-      config: C
+    // OVERLOAD: Supports subclasses with constructors that take no config.
+    static init<T extends LLMRunner>(this: new () => T): T;
+
+    // OVERLOAD: Supports classes that require constructor config.
+    static init<C, T extends LLMRunner>(
+        this: new (config: C) => T,
+        config: C
+    ): T;
+
+    // IMPLEMENTATION: Broad enough to satisfy both overload signatures.
+    static init<C, T extends LLMRunner>(
+        this: new (config?: C) => T,
+        config?: C
     ): T {
-      return new this(config);
+        return new this(config);
     }
 
 }

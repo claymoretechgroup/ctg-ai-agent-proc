@@ -7,6 +7,9 @@ export default CTGTest.init("claude runner")
 
         return (runner as unknown as { config: { command: string } }).config.command;
     }, P.equals("claude"))
+    .assert("static init supports omitted config", () => {
+        return ClaudeRunner.init() instanceof ClaudeRunner;
+    }, P.isTrue())
     .assert("adds safe mode and print defaults before constructor args", async () => {
         const runner = new ClaudeRunner({
             command: "echo",

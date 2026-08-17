@@ -15,8 +15,7 @@ export type {
     LLMPromptTemplate,
     LLMPromptTemplateDelimiter,
     LLMPromptTemplateOptions,
-    LLMPromptTemplateValue,
-    LLMPromptTextOptions
+    LLMPromptTemplateValue
 } from "./LLMPrompt/index.js";
 
 export type {

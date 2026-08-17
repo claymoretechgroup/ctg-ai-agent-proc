@@ -2,6 +2,7 @@ export interface LLMPromptErrorData {
     path?: string;
     key?: string;
     maxTokens?: number;
+    operationType?: string;
     cause?: unknown;
 }
 
@@ -9,9 +10,11 @@ const LLM_PROMPT_ERROR_TYPES = Object.freeze({
     INVALID_OPTIONS: 1001,
     TEMPLATE_VALUE_NOT_FOUND: 1002,
     READ_FAILED: 1003,
+    UNKNOWN_OPERATION: 1004,
     1001: "INVALID_OPTIONS",
     1002: "TEMPLATE_VALUE_NOT_FOUND",
-    1003: "READ_FAILED"
+    1003: "READ_FAILED",
+    1004: "UNKNOWN_OPERATION"
 });
 
 export class LLMPromptError extends Error {

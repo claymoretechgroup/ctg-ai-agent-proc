@@ -10,8 +10,7 @@ export type {
     LLMPromptTemplate,
     LLMPromptTemplateDelimiter,
     LLMPromptTemplateOptions,
-    LLMPromptTemplateValue,
-    LLMPromptTextOptions
+    LLMPromptTemplateValue
 } from "./LLMPrompt.js";
 
 export type {

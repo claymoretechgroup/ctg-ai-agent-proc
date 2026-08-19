@@ -2,7 +2,7 @@
 import { readFileSync } from "node:fs";
 
 import type LLMRunner from "../LLMRunner/LLMRunner.js";
-import type { LLMRunnerResult } from "../LLMRunner/LLMRunner.js";
+import type { LLMRunnerResult, LLMRunnerRunConfig } from "../LLMRunner/LLMRunner.js";
 import { LLMPromptError } from "./LLMPromptError.js";
 
 /**
@@ -114,18 +114,21 @@ export default class LLMPrompt {
 
     // Truncates the stored prompt when run:
     truncate(maxTokens: number): this {
+        this.validateMaxTokens(maxTokens);
         this.operations.push({type: "truncate",maxTokens});
         return this;
     }
 
     // Truncates text when run and appends the result to the stored prompt:
     truncateText(text: string, maxTokens: number): this {
+        this.validateMaxTokens(maxTokens);
         this.operations.push({type: "truncateText",text,maxTokens});
         return this;
     }
 
     // Truncates file contents when run and appends the result to the stored prompt:
     truncateFile(path: string, maxTokens: number): this {
+        this.validateMaxTokens(maxTokens);
         this.operations.push({type: "truncateFile",path,maxTokens});
         return this;
     }
@@ -135,6 +138,7 @@ export default class LLMPrompt {
         template: LLMPromptTemplate = {},
         options: LLMPromptTemplateOptions = {}
     ): this {
+        this.validateTemplateOptions(options);
         this.operations.push({type: "applyTemplate",template,options});
         return this;
     }
@@ -145,6 +149,7 @@ export default class LLMPrompt {
         template: LLMPromptTemplate = {},
         options: LLMPromptTemplateOptions = {}
     ): this {
+        this.validateTemplateOptions(options);
         this.operations.push({
             type: "applyTemplateText",
             text,
@@ -160,6 +165,7 @@ export default class LLMPrompt {
         template: LLMPromptTemplate = {},
         options: LLMPromptTemplateOptions = {}
     ): this {
+        this.validateTemplateOptions(options);
         this.operations.push({
             type: "applyTemplateFile",
             path,
@@ -176,8 +182,8 @@ export default class LLMPrompt {
     }
 
     // Builds the prompt, passes it to the runner, and returns result:
-    async run(runner: LLMRunner): Promise<LLMRunnerResult> {
-        return runner.run(await this.build(runner));
+    async run(runner: LLMRunner, config: LLMRunnerRunConfig = {}): Promise<LLMRunnerResult> {
+        return runner.run(await this.build(runner), config);
     }
 
     // Clears the resolved prompt cache:
@@ -316,12 +322,6 @@ export default class LLMPrompt {
 
     // Truncates text to fit within the configured token limit according to token counting:
     private async truncateToTokenCount(runner: LLMRunner, text: string, maxTokens: number): Promise<string> {
-        
-        if (maxTokens < 0) {
-            throw new LLMPromptError("INVALID_OPTIONS", "maxTokens must be greater than or equal to 0.", {
-                maxTokens
-            });
-        }
 
         let lower = 0;
         let upper = text.length;
@@ -338,6 +338,35 @@ export default class LLMPrompt {
         }
 
         return text.slice(0, lower);
+    }
+
+    // Validates token limits before storing prompt operations:
+    private validateMaxTokens(maxTokens: number): void {
+        if (!Number.isInteger(maxTokens) || maxTokens < 0) {
+            throw new LLMPromptError("INVALID_OPTIONS", "maxTokens must be a non-negative finite integer.", {
+                maxTokens
+            });
+        }
+    }
+
+    // Validates template delimiters before storing prompt operations:
+    private validateTemplateOptions(options: LLMPromptTemplateOptions): void {
+        const delimiter = options.delimiter;
+
+        if (delimiter === undefined) {
+            return;
+        }
+
+        if (
+            delimiter.length !== 2
+            || typeof delimiter[0] !== "string"
+            || typeof delimiter[1] !== "string"
+            || delimiter[0] === ""
+            || delimiter[1] === ""
+            || delimiter[0] === delimiter[1]
+        ) {
+            throw new LLMPromptError("INVALID_OPTIONS", "Template delimiter must contain two non-empty distinct strings.");
+        }
     }
 
     // Applies a template replacement pass to the given text:

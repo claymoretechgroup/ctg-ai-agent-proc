@@ -11,8 +11,8 @@ export {
 };
 
 export type {
-    LLMPromptConfig,
     LLMRunnerConfig,
+    LLMRunnerRunConfig,
     LLMRunnerResult
 } from "./LLMRunner.js";
 

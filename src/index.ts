@@ -21,9 +21,9 @@ export type {
 } from "./LLMPrompt/index.js";
 
 export type {
-    LLMPromptConfig,
     LLMRunnerErrorData,
     LLMRunnerErrorLogFormatter,
     LLMRunnerConfig,
+    LLMRunnerRunConfig,
     LLMRunnerResult
 } from "./LLMRunner/index.js";

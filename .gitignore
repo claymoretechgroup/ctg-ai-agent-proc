@@ -20,6 +20,9 @@ yarn-debug.log*
 yarn-error.log*
 pnpm-debug.log*
 
+# Project notes
+archive/
+
 # JavaScript
 node_modules/
 dist/

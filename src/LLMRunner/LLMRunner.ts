@@ -1,6 +1,8 @@
 // Dependencies:
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
+import { LLMRunnerError } from "./LLMRunnerError.js";
+
 const execFileAsync = promisify(execFile);
 
 /**
@@ -11,13 +13,16 @@ const execFileAsync = promisify(execFile);
 
 // Defines config for how to call an LLM from CLI:
 export interface LLMRunnerConfig {
-    command: string;    // Command that calls LLM
-    cwd?: string;       // What directory LLM is called in
-    args?: string[];    // Arguments to pass to the command that's calling the LLM
+    command: string;          // Command that calls LLM
+    cwd?: string;             // What directory LLM is called in
+    args?: string[];          // Arguments to pass to the command that's calling the LLM
+    timeout?: number;         // Milliseconds before execFile terminates the child
+    maxBuffer?: number;       // Maximum stdout/stderr buffer size in bytes
+    env?: NodeJS.ProcessEnv;  // Complete child environment override
 }
 
-// Defines config for a single prompt invocation:
-export interface LLMPromptConfig {
+// Defines config for a single runner invocation:
+export interface LLMRunnerRunConfig {
     args?: string[];    // Arguments to add to this prompt invocation
 }
 
@@ -26,6 +31,13 @@ export interface LLMRunnerResult {
     result: string;     // What's returned form stdout
     error: string;      // What's returned from stderr
 }
+
+type ExecFileFailure = {
+    code?: unknown;
+    signal?: unknown;
+    stdout?: unknown;
+    stderr?: unknown;
+};
 
 /**
  * 
@@ -44,11 +56,24 @@ export default class LLMRunner {
 
     // CONSTRUCTOR \\
     constructor(config: LLMRunnerConfig) {
+        const command = config?.command;
+
+        if (typeof command !== "string" || command.trim() === "") {
+            throw new LLMRunnerError("INVALID_OPTIONS", "LLMRunner command must be a non-empty string.", {
+                ...(typeof command === "string" ? { command } : {})
+            });
+        }
+
+        this.validateProcessControls(config);
+
         const defaults = (this.constructor as typeof LLMRunner).DEFAULT_ARGS;
 
         this.config = Object.freeze({
-            command: config.command,
+            command,
             ...(config.cwd === undefined ? {} : { cwd: config.cwd }),
+            ...(config.timeout === undefined ? {} : { timeout: config.timeout }),
+            ...(config.maxBuffer === undefined ? {} : { maxBuffer: config.maxBuffer }),
+            ...(config.env === undefined ? {} : { env: config.env }),
             args: [
                 ...defaults,
                 ...(config.args ?? [])
@@ -64,7 +89,7 @@ export default class LLMRunner {
 
     // Sends prompt to LLM for processing and returns promise of respone:
     // NOTE: This assumes that the "prompt" is always the last argument to be passed to the LLM CLI:
-    async run(prompt: string, config: LLMPromptConfig = {}): Promise<LLMRunnerResult> {
+    async run(prompt: string, config: LLMRunnerRunConfig = {}): Promise<LLMRunnerResult> {
         return this.exec([
             ...(this.config.args ?? []),
             ...(config.args ?? []),
@@ -92,10 +117,62 @@ export default class LLMRunner {
 
     // Runs command and returns result:
     protected async exec(args: string[]): Promise<LLMRunnerResult> {
-        const { stdout, stderr } = await execFileAsync(this.config.command, args, {
-            cwd: this.config.cwd
-        });
-        return {result:stdout, error:stderr};
+        try {
+            const { stdout, stderr } = await execFileAsync(this.config.command, args, {
+                cwd: this.config.cwd,
+                timeout: this.config.timeout,
+                maxBuffer: this.config.maxBuffer,
+                env: this.config.env
+            });
+
+            return {result:stdout, error:stderr};
+        } catch (cause) {
+            throw this.toExecError(args, cause);
+        }
+    }
+
+    // Converts native execFile failures into the public runner error type:
+    private toExecError(args: string[], cause: unknown): LLMRunnerError {
+        const failure = cause as ExecFileFailure;
+        const commandMissing = failure.code === "ENOENT";
+
+        return new LLMRunnerError(
+            commandMissing ? "COMMAND_NOT_FOUND" : "COMMAND_FAILED",
+            commandMissing
+                ? `LLM runner command not found: ${this.config.command}.`
+                : `LLM runner command failed: ${this.config.command}.`,
+            {
+                command: this.config.command,
+                args: [...args],
+                ...(this.config.cwd === undefined ? {} : { cwd: this.config.cwd }),
+                ...(typeof failure.code === "number" ? { exitCode: failure.code } : {}),
+                ...(typeof failure.signal === "string" ? { signal: failure.signal } : {}),
+                ...(typeof failure.stdout === "string" ? { stdout: failure.stdout } : {}),
+                ...(typeof failure.stderr === "string" ? { stderr: failure.stderr } : {}),
+                cause
+            }
+        );
+    }
+
+    // Validates process-control values before invoking child processes:
+    private validateProcessControls(config: LLMRunnerConfig): void {
+        if (
+            config.timeout !== undefined
+            && (!Number.isInteger(config.timeout) || config.timeout < 0)
+        ) {
+            throw new LLMRunnerError("INVALID_OPTIONS", "LLMRunner timeout must be a non-negative finite integer.", {
+                command: config.command
+            });
+        }
+
+        if (
+            config.maxBuffer !== undefined
+            && (!Number.isInteger(config.maxBuffer) || config.maxBuffer <= 0)
+        ) {
+            throw new LLMRunnerError("INVALID_OPTIONS", "LLMRunner maxBuffer must be a positive finite integer.", {
+                command: config.command
+            });
+        }
     }
 
     /**

@@ -1,5 +1,6 @@
 import CTGTest, { CTGTestPredicates as P } from "ctg-js-test";
 import { CodexRunner } from "../../src/index.ts";
+import { createCwdReporterCommand, runnerTestCwd } from "./helpers.ts";
 
 const BASE_ARGS = [
     "exec",
@@ -43,4 +44,13 @@ export default CTGTest.init("codex runner")
         });
 
         return result.result.trim().split(" ");
-    }, P.equals([...BASE_ARGS, "--model", "gpt-5-codex", "PROMPT"]));
+    }, P.equals([...BASE_ARGS, "--model", "gpt-5-codex", "PROMPT"]))
+    .assert("forwards cwd override to base runner", async () => {
+        const runner = new CodexRunner({
+            command: createCwdReporterCommand(),
+            cwd: runnerTestCwd
+        });
+        const result = await runner.run("PROMPT");
+
+        return result.result;
+    }, P.equals(runnerTestCwd));

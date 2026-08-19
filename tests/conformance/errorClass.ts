@@ -18,8 +18,18 @@ const captureErrorLog = (fn: () => string): {output: string, logged: string} => 
     }
 };
 
+const captureThrown = (fn: () => unknown): unknown => {
+    try {
+        fn();
+
+        return null;
+    } catch (caught) {
+        return caught;
+    }
+};
+
 export default CTGTest.init("error class")
-    .assert("types map is bidirectional", () => {
+    .assert("runner error types map is bidirectional", () => {
         return LLMRunnerError.TYPES.INVALID_OPTIONS === 1001
             && LLMRunnerError.TYPES.COMMAND_NOT_FOUND === 1002
             && LLMRunnerError.TYPES.COMMAND_FAILED === 1003
@@ -27,7 +37,7 @@ export default CTGTest.init("error class")
             && LLMRunnerError.TYPES[1002] === "COMMAND_NOT_FOUND"
             && LLMRunnerError.TYPES[1003] === "COMMAND_FAILED";
     }, P.isTrue())
-    .assert("constructor assigns public fields", () => {
+    .assert("runner error constructor assigns public fields", () => {
         const cause = new Error("native");
         const err = new LLMRunnerError("COMMAND_FAILED", "Command failed.", {
             command: "tool",
@@ -45,9 +55,30 @@ export default CTGTest.init("error class")
             && err.data.exitCode === 1
             && err.cause === cause;
     }, P.isTrue())
+    .assert("runner error constructor rejects unknown type", () => {
+        const caught = captureThrown(() => {
+            new LLMRunnerError("UNKNOWN", "Unknown.");
+        });
+
+        return caught instanceof Error
+            && caught.message === "Unknown LLMRunnerError type: UNKNOWN";
+    }, P.isTrue())
+    .assert("runner error data is shallow frozen", () => {
+        const err = new LLMRunnerError("COMMAND_FAILED", "Command failed.", {
+            command: "tool"
+        });
+
+        return Object.isFrozen(err.data);
+    }, P.isTrue())
     .assert("is narrows runner errors", () => {
         return LLMRunnerError.is(new LLMRunnerError("INVALID_OPTIONS", "Invalid."))
             && !LLMRunnerError.is(new Error("native"));
+    }, P.isTrue())
+    .assert("runner error isType checks known types", () => {
+        return LLMRunnerError.isType("INVALID_OPTIONS")
+            && LLMRunnerError.isType("COMMAND_NOT_FOUND")
+            && LLMRunnerError.isType("COMMAND_FAILED")
+            && !LLMRunnerError.isType("UNKNOWN");
     }, P.isTrue())
     .assert("runner error log writes default output", () => {
         const err = new LLMRunnerError("COMMAND_FAILED", "Command failed.", {
@@ -96,4 +127,47 @@ export default CTGTest.init("error class")
 
         return log.output === "TEMPLATE_VALUE_NOT_FOUND:name"
             && log.logged === "TEMPLATE_VALUE_NOT_FOUND:name";
+    }, P.isTrue())
+    .assert("prompt error types map is bidirectional", () => {
+        return LLMPromptError.TYPES.INVALID_OPTIONS === 1001
+            && LLMPromptError.TYPES.TEMPLATE_VALUE_NOT_FOUND === 1002
+            && LLMPromptError.TYPES.READ_FAILED === 1003
+            && LLMPromptError.TYPES.UNKNOWN_OPERATION === 1004
+            && LLMPromptError.TYPES[1001] === "INVALID_OPTIONS"
+            && LLMPromptError.TYPES[1002] === "TEMPLATE_VALUE_NOT_FOUND"
+            && LLMPromptError.TYPES[1003] === "READ_FAILED"
+            && LLMPromptError.TYPES[1004] === "UNKNOWN_OPERATION";
+    }, P.isTrue())
+    .assert("prompt error constructor assigns public fields", () => {
+        const cause = new Error("native");
+        const err = new LLMPromptError("READ_FAILED", "Read failed.", {
+            path: "prompt.txt",
+            cause
+        });
+
+        return err.name === "LLMPromptError"
+            && err.type === "READ_FAILED"
+            && err.msg === "Read failed."
+            && err.message === "Read failed."
+            && err.data.path === "prompt.txt"
+            && err.cause === cause;
+    }, P.isTrue())
+    .assert("prompt error constructor rejects unknown type", () => {
+        const caught = captureThrown(() => {
+            new LLMPromptError("UNKNOWN", "Unknown.");
+        });
+
+        return caught instanceof Error
+            && caught.message === "Unknown LLMPromptError type: UNKNOWN";
+    }, P.isTrue())
+    .assert("prompt error data is shallow frozen", () => {
+        const err = new LLMPromptError("READ_FAILED", "Read failed.", {
+            path: "prompt.txt"
+        });
+
+        return Object.isFrozen(err.data);
+    }, P.isTrue())
+    .assert("is narrows prompt errors", () => {
+        return LLMPromptError.is(new LLMPromptError("INVALID_OPTIONS", "Invalid."))
+            && !LLMPromptError.is(new Error("native"));
     }, P.isTrue());

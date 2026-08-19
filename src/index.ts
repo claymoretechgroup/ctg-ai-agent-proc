@@ -13,6 +13,7 @@ export {
 export type {
     LLMPromptErrorData,
     LLMPromptErrorLogFormatter,
+    LLMPromptOptions,
     LLMPromptTemplate,
     LLMPromptTemplateDelimiter,
     LLMPromptTemplateOptions,

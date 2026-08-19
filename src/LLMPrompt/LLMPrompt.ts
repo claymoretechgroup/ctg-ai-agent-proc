@@ -26,6 +26,11 @@ export interface LLMPromptTemplateOptions {
     strict?: boolean;                          // Whether missing template keys throw errors
 }
 
+// Defines prompt construction behavior:
+export interface LLMPromptOptions {
+    cache?: boolean;    // Whether to cache the resolved prompt between runs
+}
+
 // Defines stored prompt operations to resolve when the prompt is run:
 type LLMPromptOperation = {type: "append",text: string}
     | {type: "appendFile",path: string}
@@ -53,10 +58,19 @@ export default class LLMPrompt {
     static readonly DEFAULT_TEMPLATE_DELIMITER: LLMPromptTemplateDelimiter = ["[[", "]]"];
 
     /* Instance Fields */
-    private readonly operations: LLMPromptOperation[];
+    private readonly config: Readonly<Required<LLMPromptOptions>>;  // Config options for prompt builder
+    private readonly operations: LLMPromptOperation[];              // Stores what operations are used to build the prompt with
+    private cachedPrompt: string | null = null;                     // Stores the resolved prompt when caching is enabled
 
     // CONSTRUCTOR \\
-    constructor(prompt = "") {
+    constructor(prompt = "", config: LLMPromptOptions = {}) {
+        
+        // Sets immutable config: 
+        this.config = Object.freeze({
+            cache: config.cache ?? false
+        });
+
+        // Store initial prompt as an "append" operation: 
         this.operations = prompt === ""
             ? []
             : [{type: "append",text: prompt}];
@@ -163,7 +177,19 @@ export default class LLMPrompt {
 
     // Builds the prompt, passes it to the runner, and returns result:
     async run(runner: LLMRunner): Promise<LLMRunnerResult> {
-        return runner.run(await this.build(runner));
+        return runner.run(await this.getPrompt(runner));
+    }
+
+    // Clears the resolved prompt cache:
+    resetCache(): this {
+        if (!this.config.cache) {
+            throw new LLMPromptError(
+                "INVALID_OPTIONS",
+                "LLMPrompt cache cannot be reset when caching is not enabled."
+            );
+        }
+        this.cachedPrompt = null;
+        return this;
     }
 
     /**
@@ -171,6 +197,13 @@ export default class LLMPrompt {
      * Private Methods
      *
      */
+
+    // Returns a cached prompt when available, otherwise builds it:
+    private async getPrompt(runner: LLMRunner): Promise<string> {
+        return this.config.cache && this.cachedPrompt !== null
+            ? this.cachedPrompt
+            : await this.build(runner);
+    }
 
     // Builds the final prompt string by resolving stored operations in order:
     private async build(runner: LLMRunner): Promise<string> {
@@ -250,7 +283,7 @@ export default class LLMPrompt {
                     break;
 
                 case "join":
-                    result += await operation.prompt.build(runner);
+                    result += await operation.prompt.getPrompt(runner);
                     break;
 
                 default: {
@@ -264,6 +297,11 @@ export default class LLMPrompt {
                 
                 }
             }
+        }
+
+        // Store result in cache if caching is enabled:
+        if (this.config.cache) {
+            this.cachedPrompt = result;
         }
 
         return result;
@@ -338,8 +376,8 @@ export default class LLMPrompt {
      */
 
     // Static Factory Method \\
-    static init(prompt = ""): LLMPrompt {
-        return new LLMPrompt(prompt);
+    static init(prompt = "", config: LLMPromptOptions = {}): LLMPrompt {
+        return new LLMPrompt(prompt, config);
     }
 
 }

@@ -4,10 +4,11 @@ import { join } from "node:path";
 
 import CTGTest, { CTGTestPredicates as P } from "ctg-js-test";
 import { LLMPrompt, LLMPromptError, LLMRunner } from "../../src/index.ts";
-import { captureRejected } from "./helpers.ts";
+import { captureRejected, captureThrown } from "./helpers.ts";
 
 class PromptRunner extends LLMRunner {
     readonly prompts: string[] = [];
+    readonly summarizedTexts: string[] = [];
 
     constructor() {
         super({
@@ -30,6 +31,8 @@ class PromptRunner extends LLMRunner {
     }
 
     override async summarize(text: string): Promise<string> {
+        this.summarizedTexts.push(text);
+
         return `SUMMARY:${text}`;
     }
 }
@@ -218,4 +221,78 @@ export default CTGTest.init("prompt")
             .run(runner);
 
         return runner.prompts[0];
-    }, P.equals("Base joined"));
+    }, P.equals("Base joined"))
+    .assert("caching reuses resolved prompt without rerunning operations", async () => {
+        const runner = new PromptRunner();
+        const prompt = new LLMPrompt("Base ", { cache: true })
+            .summarizeText("details");
+
+        await prompt.run(runner);
+        await prompt.run(runner);
+
+        return {
+            prompts: runner.prompts,
+            summaries: runner.summarizedTexts
+        };
+    }, P.equals({
+        prompts: ["Base SUMMARY:details", "Base SUMMARY:details"],
+        summaries: ["details"]
+    }))
+    .assert("resetCache reruns operations on the next run", async () => {
+        const runner = new PromptRunner();
+        const prompt = new LLMPrompt("", { cache: true })
+            .summarizeText("details");
+
+        await prompt.run(runner);
+        prompt.resetCache();
+        await prompt.run(runner);
+
+        return runner.summarizedTexts;
+    }, P.equals(["details", "details"]))
+    .assert("resetCache throws when caching is disabled", () => {
+        const caught = captureThrown(() => {
+            new LLMPrompt().resetCache();
+        });
+
+        return LLMPromptError.is(caught)
+            && caught.type === "INVALID_OPTIONS";
+    }, P.isTrue())
+    .assert("adding operations does not invalidate cached prompt", async () => {
+        const runner = new PromptRunner();
+        const prompt = new LLMPrompt("Base", { cache: true });
+
+        await prompt.run(runner);
+        prompt.append(" updated");
+        await prompt.run(runner);
+
+        return runner.prompts;
+    }, P.equals(["Base", "Base"]))
+    .assert("resetCache applies operations added after cache population", async () => {
+        const runner = new PromptRunner();
+        const prompt = new LLMPrompt("Base", { cache: true });
+
+        await prompt.run(runner);
+        prompt.append(" updated");
+        prompt.resetCache();
+        await prompt.run(runner);
+
+        return runner.prompts;
+    }, P.equals(["Base", "Base updated"]))
+    .assert("join uses cached reusable prompt", async () => {
+        const runner = new PromptRunner();
+        const reusable = new LLMPrompt("", { cache: true })
+            .summarizeText("joined");
+        const prompt = new LLMPrompt("Base ")
+            .join(reusable);
+
+        await prompt.run(runner);
+        await prompt.run(runner);
+
+        return {
+            prompts: runner.prompts,
+            summaries: runner.summarizedTexts
+        };
+    }, P.equals({
+        prompts: ["Base SUMMARY:joined", "Base SUMMARY:joined"],
+        summaries: ["joined"]
+    }));

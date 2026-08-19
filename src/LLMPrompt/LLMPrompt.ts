@@ -177,7 +177,7 @@ export default class LLMPrompt {
 
     // Builds the prompt, passes it to the runner, and returns result:
     async run(runner: LLMRunner): Promise<LLMRunnerResult> {
-        return runner.run(await this.getPrompt(runner));
+        return runner.run(await this.build(runner));
     }
 
     // Clears the resolved prompt cache:
@@ -198,15 +198,13 @@ export default class LLMPrompt {
      *
      */
 
-    // Returns a cached prompt when available, otherwise builds it:
-    private async getPrompt(runner: LLMRunner): Promise<string> {
-        return this.config.cache && this.cachedPrompt !== null
-            ? this.cachedPrompt
-            : await this.build(runner);
-    }
-
     // Builds the final prompt string by resolving stored operations in order:
     private async build(runner: LLMRunner): Promise<string> {
+        
+        // Returns cached prompt if caching is set and a prompt is already cached:
+        if (this.config.cache && this.cachedPrompt !== null) {
+            return this.cachedPrompt;
+        }
         
         // Stores resulting prompt:
         let result = "";
@@ -283,7 +281,7 @@ export default class LLMPrompt {
                     break;
 
                 case "join":
-                    result += await operation.prompt.getPrompt(runner);
+                    result += await operation.prompt.build(runner);
                     break;
 
                 default: {
@@ -304,7 +302,7 @@ export default class LLMPrompt {
             this.cachedPrompt = result;
         }
 
-        return result;
+        return result;    
     }
 
     // Reads text from disk and wraps filesystem failures in prompt errors:
@@ -343,11 +341,7 @@ export default class LLMPrompt {
     }
 
     // Applies a template replacement pass to the given text:
-    private applyTemplateToText(
-        text: string,
-        template: LLMPromptTemplate,
-        options: LLMPromptTemplateOptions
-    ): string {
+    private applyTemplateToText(text: string, template: LLMPromptTemplate, options: LLMPromptTemplateOptions): string {
 
         const delimiter = options.delimiter ?? LLMPrompt.DEFAULT_TEMPLATE_DELIMITER;
         const strict = options.strict ?? true;
@@ -360,9 +354,11 @@ export default class LLMPrompt {
             }
 
             if (strict) {
-                throw new LLMPromptError("TEMPLATE_VALUE_NOT_FOUND", `Could not resolve template value "${key}".`, {
-                    key
-                });
+                throw new LLMPromptError(
+                    "TEMPLATE_VALUE_NOT_FOUND", 
+                    `Could not resolve template value "${key}".`,
+                    {key}
+                );
             }
 
             return match;

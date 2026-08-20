@@ -1,9 +1,6 @@
 // Dependencies:
 import { execFile } from "node:child_process";
-import { promisify } from "node:util";
 import { LLMRunnerError } from "./LLMRunnerError.js";
-
-const execFileAsync = promisify(execFile);
 
 /**
  * 
@@ -15,6 +12,7 @@ const execFileAsync = promisify(execFile);
 export interface LLMRunnerConfig {
     command: string;          // Command that calls LLM
     cwd?: string;             // What directory LLM is called in
+    prefixArgs?: string[];    // Arguments to pass before subclass defaults
     args?: string[];          // Arguments to pass to the command that's calling the LLM
     timeout?: number;         // Milliseconds before execFile terminates the child
     maxBuffer?: number;       // Maximum stdout/stderr buffer size in bytes
@@ -37,6 +35,11 @@ type ExecFileFailure = {
     signal?: unknown;
     stdout?: unknown;
     stderr?: unknown;
+};
+
+type ExecFileOutput = {
+    stdout: string;
+    stderr: string;
 };
 
 /**
@@ -75,6 +78,7 @@ export default class LLMRunner {
             ...(config.maxBuffer === undefined ? {} : { maxBuffer: config.maxBuffer }),
             ...(config.env === undefined ? {} : { env: config.env }),
             args: [
+                ...(config.prefixArgs ?? []),
                 ...defaults,
                 ...(config.args ?? [])
             ]
@@ -118,17 +122,37 @@ export default class LLMRunner {
     // Runs command and returns result:
     protected async exec(args: string[]): Promise<LLMRunnerResult> {
         try {
-            const { stdout, stderr } = await execFileAsync(this.config.command, args, {
-                cwd: this.config.cwd,
-                timeout: this.config.timeout,
-                maxBuffer: this.config.maxBuffer,
-                env: this.config.env
-            });
+            const { stdout, stderr } = await this.execFileWithClosedStdin(args);
 
             return {result:stdout, error:stderr};
         } catch (cause) {
             throw this.toExecError(args, cause);
         }
+    }
+
+    // Spawns the runner process and closes stdin so CLIs do not wait for extra piped input:
+    private execFileWithClosedStdin(args: string[]): Promise<ExecFileOutput> {
+        return new Promise((resolve, reject) => {
+            const child = execFile(this.config.command, args, {
+                cwd: this.config.cwd,
+                timeout: this.config.timeout,
+                maxBuffer: this.config.maxBuffer,
+                env: this.config.env
+            }, (error, stdout, stderr) => {
+                if (error) {
+                    Object.assign(error, {stdout, stderr});
+                    reject(error);
+                    return;
+                }
+
+                resolve({stdout, stderr});
+            });
+
+            child.stdin?.on("error", () => {
+                // A fast-exiting child may close before stdin.end(); stdout/stderr callback owns result state.
+            });
+            child.stdin?.end();
+        });
     }
 
     // Converts native execFile failures into the public runner error type:

@@ -40,6 +40,25 @@ class SummarizeRunner extends LLMRunner {
     }
 }
 
+class ShellReportingRunner extends LLMRunner {
+    static override readonly DEFAULT_ARGS = [
+        "--default"
+    ] as const;
+
+    constructor(config: Partial<LLMRunnerConfig> = {}) {
+        super({
+            command: config.command ?? "/bin/sh",
+            prefixArgs: [
+                "-c",
+                "printf '%s\\n' \"$@\"",
+                "sh",
+                ...(config.prefixArgs ?? [])
+            ],
+            ...(config.args === undefined ? {} : { args: config.args })
+        });
+    }
+}
+
 export default CTGTest.init("runner")
     .assert("constructor rejects empty command", () => {
         const caught = captureThrown(() => {
@@ -115,6 +134,19 @@ export default CTGTest.init("runner")
 
         return JSON.parse(result.result).argv;
     }, P.equals(["--init", "PROMPT"]))
+    .assert("constructor prefix args are copied", async () => {
+        const prefixArgs = ["-e", REPORT_SCRIPT, "--", "--prefix"];
+        const runner = new LLMRunner({
+            command: process.execPath,
+            prefixArgs
+        });
+
+        prefixArgs.push("--mutated");
+
+        const result = await runner.run("PROMPT");
+
+        return JSON.parse(result.result).argv;
+    }, P.equals(["--prefix", "PROMPT"]))
     .assert("base default args are empty", () => {
         return LLMRunner.DEFAULT_ARGS;
     }, P.equals([]))
@@ -224,6 +256,20 @@ export default CTGTest.init("runner")
 
         return JSON.parse(result.result).argv;
     }, P.equals(["--init", ""]))
+    .assert("child stdin is closed after spawn", async () => {
+        const runner = new LLMRunner({
+            command: process.execPath,
+            timeout: 1000,
+            args: [
+                "-e",
+                "process.stdin.resume();process.stdin.on('end',()=>process.stdout.write('closed'));",
+                "--"
+            ]
+        });
+        const result = await runner.run("PROMPT");
+
+        return result.result;
+    }, P.equals("closed"))
     .assert("base tokenCount uses length over four approximation", async () => {
         const runner = new LLMRunner({
             command: process.execPath
@@ -267,6 +313,17 @@ export default CTGTest.init("runner")
 
         return JSON.parse(result.result).argv;
     }, P.equals(["--default", "--init", "--prompt-arg", "PROMPT"]))
+    .assert("constructor prefix args precede subclass default args", async () => {
+        const runner = new ShellReportingRunner({
+            prefixArgs: ["--prefix"],
+            args: ["--init"]
+        });
+        const result = await runner.run("PROMPT", {
+            args: ["--prompt-arg"]
+        });
+
+        return result.result.trim().split("\n");
+    }, P.equals(["--prefix", "--default", "--init", "--prompt-arg", "PROMPT"]))
     .assert("static init returns subclass instance", () => {
         return ReportingRunner.init({}) instanceof ReportingRunner;
     }, P.isTrue())

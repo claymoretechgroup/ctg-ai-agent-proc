@@ -1,0 +1,2 @@
+ctg-ai-agent-proc v0.1 validates live runner parity for CLI-backed prompt processors.
+It checks that concrete runners and reusable prompt operations compose across the real process boundary.

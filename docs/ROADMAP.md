@@ -18,6 +18,66 @@ This suite should be gated by an environment variable and excluded from the
 default hermetic `npm test` path because CLI installation, CLI version, model
 availability, auth state, and vendor flag churn are machine-specific.
 
+Detailed design notes are archived in
+[live-parity-testing.md](../archive/live-parity-testing.md).
+
+### Completed Live Checks
+
+- Claude parity passed on this machine with Claude Code `2.1.236` using
+  `CTG_AGENT_PROC_LIVE_CLAUDE_ARGS='["--model","sonnet"]'`.
+- Claude prompt integration passed on this machine with Claude Code `2.1.236`
+  using `CTG_AGENT_PROC_LIVE_CLAUDE_ARGS='["--model","sonnet"]'`.
+- Claude parity passed on this machine with Claude Code `2.1.236` using
+  `CTG_AGENT_PROC_LIVE_CLAUDE_ARGS='["--model","opus"]'`.
+- Claude prompt integration passed on this machine with Claude Code `2.1.236`
+  using `CTG_AGENT_PROC_LIVE_CLAUDE_ARGS='["--model","opus"]'`.
+- Claude repeatability passed on this machine for three consecutive Claude Code
+  `2.1.236` runs using
+  `CTG_AGENT_PROC_LIVE_CLAUDE_ARGS='["--model","sonnet"]'`.
+- Claude repeatability passed on this machine for three consecutive Claude Code
+  `2.1.236` runs using
+  `CTG_AGENT_PROC_LIVE_CLAUDE_ARGS='["--model","opus"]'`.
+- Codex parity passed on this machine with `codex-cli 0.148.0` using default
+  Codex model/settings.
+- Codex prompt integration passed on this machine with `codex-cli 0.148.0`
+  using default Codex model/settings.
+- Codex parity passed on this machine with `codex-cli 0.148.0` using
+  `CTG_AGENT_PROC_LIVE_CODEX_ARGS='["-c","model_reasoning_effort=\"high\""]'`.
+- Codex prompt integration passed on this machine with `codex-cli 0.148.0`
+  using
+  `CTG_AGENT_PROC_LIVE_CODEX_ARGS='["-c","model_reasoning_effort=\"high\""]'`.
+- Codex filesystem side-effect parity passed on this machine with
+  `codex-cli 0.148.0`, proving direct Codex and `CodexRunner` can each generate
+  `agent-output.txt` with exact sentinel content in isolated temp workspaces.
+- Expanded Claude Sonnet parity passed on this machine with Claude Code
+  `2.1.237`, covering stdout parity, prompt integration, filesystem read/write,
+  and web search using `CTG_AGENT_PROC_LIVE_CLAUDE_ARGS='["--model","sonnet"]'`.
+- Expanded Claude Opus parity passed on this machine with Claude Code
+  `2.1.237`, covering stdout parity, prompt integration, filesystem read/write,
+  and web search using `CTG_AGENT_PROC_LIVE_CLAUDE_ARGS='["--model","opus"]'`.
+- Expanded Codex default parity passed on this machine with `codex-cli 0.148.0`,
+  covering stdout parity, prompt integration, filesystem read/write, and web
+  search.
+- Expanded Codex thinking-level parity passed on this machine with
+  `codex-cli 0.148.0` for `model_reasoning_effort` values `low`, `medium`, and
+  `high`, covering stdout parity, prompt integration, filesystem read/write,
+  and web search.
+- Expanded Codex 5.4 parity passed on this machine with `codex-cli 0.148.0`
+  using `CTG_AGENT_PROC_LIVE_CODEX_ARGS='["--model","gpt-5.4"]'`, covering
+  stdout parity, prompt integration, filesystem read/write, and web search.
+- Codex default repeatability passed on this machine for three consecutive
+  expanded `codex-cli 0.148.0` runs, covering stdout parity, prompt integration,
+  filesystem read/write, and web search.
+- Timeout parity passed on this machine for Claude Code `2.1.237` and
+  `codex-cli 0.148.0`, proving direct CLI baselines and concrete runners settle
+  under a 1ms configured process timeout in the controlled live timeout worker.
+
+### Non-Blocking Watch Items
+
+- **Non-blocking:** Continue watching real-world long-running generation tasks
+  for process-tree cancellation issues; the controlled 1ms live timeout path now
+  passes.
+
 ### Strategy
 
 Parity tests should answer one question: does the concrete runner invoke the

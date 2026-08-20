@@ -78,6 +78,7 @@ new LLMRunner(config: LLMRunnerConfig)
 | RUN-01 | Stored config is a frozen object; mutating it throws or has no effect. | **Covered** — `runner.ts` "stored config is frozen". |
 | RUN-02 | Constructor copies `config.args` into a new array: mutating the caller's array after construction does not change runner behavior. | **Covered** — `runner.ts` "constructor args are copied". |
 | RUN-03 | Stored args are `subclass DEFAULT_ARGS` followed by constructor `args`. | **Covered** — `runner.ts` "subclass default args precede constructor args". |
+| RUN-03A | Optional constructor `prefixArgs` are copied and placed before subclass `DEFAULT_ARGS`, then constructor `args`. | **Covered** — `runner.ts` "constructor prefix args are copied" and "constructor prefix args precede subclass default args". |
 | RUN-04 | Base `DEFAULT_ARGS` is an empty readonly array; subclasses may override it. | **Covered** — `runner.ts` "base default args are empty" and "subclass default args precede constructor args". |
 | RUN-04A | Optional `timeout`, `maxBuffer`, and `env` config values are forwarded to `execFile`. Omitted `env` inherits the parent process environment; provided `env` is the complete child environment and is not merged or filtered by the library. | **Covered** — `runner.ts` "env override is forwarded as complete child environment", "timeout failures are wrapped", and "maxBuffer failures are wrapped". |
 | RUN-04B | Invalid `timeout` / `maxBuffer` values throw `LLMRunnerError("INVALID_OPTIONS")`: `timeout` must be a non-negative finite integer, and `maxBuffer` must be a positive finite integer. | **Covered** — `runner.ts` "constructor rejects invalid timeout" and "constructor rejects invalid maxBuffer". |
@@ -96,6 +97,7 @@ async run(prompt: string, config: LLMRunnerRunConfig = {}): Promise<LLMRunnerRes
 | RUN-08 | An empty-string prompt is still passed as the final argv element. | **Covered** — `runner.ts` "empty prompt is appended as final argv element". |
 | RUN-09 | `run()` wraps native `execFile` failures in `LLMRunnerError`: missing commands become `COMMAND_NOT_FOUND`; other process failures become `COMMAND_FAILED`; partial stdout/stderr and optional signal diagnostics are preserved when available. | **Covered** — `runner.ts` "missing command failures are wrapped" and "non-zero command failures are wrapped with output". |
 | RUN-09A | Prompts are delivered as the final argv element. Very large prompts may exceed OS argument-size limits; v0.1 does not preflight prompt size or switch to stdin delivery. | **Documented** — Gap G-6. |
+| RUN-09B | Child stdin is closed immediately after spawn. Runners do not use stdin for prompt delivery, and CLIs must observe EOF rather than an open pipe waiting for additional input. | **Covered** — `runner.ts` "child stdin is closed after spawn". |
 
 ### 2.3 Token Counting
 
@@ -139,7 +141,7 @@ static init<C, T extends LLMRunner>(this: new (config: C) => T, config: C): T
 | CLR-01 | Default command is `claude`. | **Covered** — `claudeRunner.ts`. |
 | CLR-02 | `DEFAULT_ARGS` are `--safe-mode --print`, placed before constructor args. | **Covered** — `claudeRunner.ts`. |
 | CLR-03 | Per-run args are placed after constructor args and before the prompt. | **Covered** — `claudeRunner.ts`. |
-| CLR-04 | `command` and `cwd` overrides are forwarded to the base class. | **Covered** — `claudeRunner.ts` command override tests and "forwards cwd override to base runner". |
+| CLR-04 | `command`, `cwd`, `prefixArgs`, `args`, `timeout`, `maxBuffer`, and `env` overrides are forwarded to the base class. | **Covered** — `claudeRunner.ts` command override tests, "forwards cwd override to base runner", "adds prefix args before safe mode defaults", and "forwards process controls to base runner". |
 
 ### 3.2 CodexRunner
 
@@ -148,7 +150,7 @@ static init<C, T extends LLMRunner>(this: new (config: C) => T, config: C): T
 | CXR-01 | Default command is `codex`. | **Covered** — `codexRunner.ts`. |
 | CXR-02 | `DEFAULT_ARGS` are the sterile `exec` invocation (`exec --ignore-user-config --ignore-rules --ephemeral -c project_root_markers=[] -c project_doc_max_bytes=0 -c features.memories=false -c memories.use_memories=false`), placed before constructor args. | **Covered** — `codexRunner.ts`. |
 | CXR-03 | Per-run args are placed after constructor args and before the prompt. | **Covered** — `codexRunner.ts`. |
-| CXR-04 | `command` and `cwd` overrides are forwarded to the base class. | **Covered** — `codexRunner.ts` command override tests and "forwards cwd override to base runner". |
+| CXR-04 | `command`, `cwd`, `prefixArgs`, `args`, `timeout`, `maxBuffer`, and `env` overrides are forwarded to the base class. | **Covered** — `codexRunner.ts` command override tests, "forwards cwd override to base runner", "adds prefix args before codex defaults", and "forwards process controls to base runner". |
 
 ### 3.3 CLI Parity
 
@@ -407,6 +409,15 @@ wrapped as `COMMAND_FAILED`, preserving stdout/stderr when Node provides them.
 `env` is a full child-environment override. When omitted, Node inherits the
 parent process environment. When provided, the library passes it directly to
 `execFile`; it does not merge with `process.env` and does not filter keys.
+
+### G-7A. Child stdin disposition — resolved
+
+`LLMRunner.exec()` closes child stdin immediately after spawning the runner
+process. Prompt delivery remains argv-based: the prompt is always the final
+argv element, and stdin is not used as an additional prompt channel.
+
+This avoids mode changes in CLIs that inspect non-TTY stdin and wait for
+additional piped input when the pipe remains open.
 
 ### G-8. Prompt numeric validation — resolved
 

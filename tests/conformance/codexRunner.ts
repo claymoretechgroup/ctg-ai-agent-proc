@@ -35,6 +35,16 @@ export default CTGTest.init("codex runner")
 
         return result.result.trim().split(" ");
     }, P.equals([...BASE_ARGS, "--model", "gpt-5-codex", "PROMPT"]))
+    .assert("adds prefix args before codex defaults", async () => {
+        const runner = new CodexRunner({
+            command: "echo",
+            prefixArgs: ["--prefix"],
+            args: ["--model", "gpt-5-codex"]
+        });
+        const result = await runner.run("PROMPT");
+
+        return result.result.trim().split(" ");
+    }, P.equals(["--prefix", ...BASE_ARGS, "--model", "gpt-5-codex", "PROMPT"]))
     .assert("adds prompt args before prompt", async () => {
         const runner = new CodexRunner({
             command: "echo"
@@ -53,4 +63,23 @@ export default CTGTest.init("codex runner")
         const result = await runner.run("PROMPT");
 
         return result.result;
-    }, P.equals(runnerTestCwd));
+    }, P.equals(runnerTestCwd))
+    .assert("forwards process controls to base runner", () => {
+        const env = { CTG_AGENT_PROC_ENV_TEST: "visible" };
+        const runner = new CodexRunner({
+            timeout: 10,
+            maxBuffer: 100,
+            env
+        });
+        const config = (runner as unknown as { config: { timeout?: number,maxBuffer?: number,env?: NodeJS.ProcessEnv } }).config;
+
+        return {
+            timeout: config.timeout,
+            maxBuffer: config.maxBuffer,
+            env: config.env
+        };
+    }, P.equals({
+        timeout: 10,
+        maxBuffer: 100,
+        env: { CTG_AGENT_PROC_ENV_TEST: "visible" }
+    }));

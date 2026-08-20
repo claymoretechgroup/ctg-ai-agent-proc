@@ -25,7 +25,11 @@ export default class CodexRunner extends LLMRunner {
         super({
             command: config.command ?? "codex",
             ...(config.cwd === undefined ? {} : { cwd: config.cwd }),
-            ...(config.args === undefined ? {} : { args: config.args })
+            ...(config.prefixArgs === undefined ? {} : { prefixArgs: config.prefixArgs }),
+            ...(config.args === undefined ? {} : { args: config.args }),
+            ...(config.timeout === undefined ? {} : { timeout: config.timeout }),
+            ...(config.maxBuffer === undefined ? {} : { maxBuffer: config.maxBuffer }),
+            ...(config.env === undefined ? {} : { env: config.env })
         });
     }
 

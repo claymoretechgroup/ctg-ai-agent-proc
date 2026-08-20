@@ -20,6 +20,16 @@ export default CTGTest.init("claude runner")
 
         return result.result.trim();
     }, P.equals("--safe-mode --print --model opus PROMPT"))
+    .assert("adds prefix args before safe mode defaults", async () => {
+        const runner = new ClaudeRunner({
+            command: "echo",
+            prefixArgs: ["--prefix"],
+            args: ["--model", "opus"]
+        });
+        const result = await runner.run("PROMPT");
+
+        return result.result.trim();
+    }, P.equals("--prefix --safe-mode --print --model opus PROMPT"))
     .assert("adds prompt args before prompt", async () => {
         const runner = new ClaudeRunner({
             command: "echo"
@@ -38,4 +48,23 @@ export default CTGTest.init("claude runner")
         const result = await runner.run("PROMPT");
 
         return result.result;
-    }, P.equals(runnerTestCwd));
+    }, P.equals(runnerTestCwd))
+    .assert("forwards process controls to base runner", () => {
+        const env = { CTG_AGENT_PROC_ENV_TEST: "visible" };
+        const runner = new ClaudeRunner({
+            timeout: 10,
+            maxBuffer: 100,
+            env
+        });
+        const config = (runner as unknown as { config: { timeout?: number,maxBuffer?: number,env?: NodeJS.ProcessEnv } }).config;
+
+        return {
+            timeout: config.timeout,
+            maxBuffer: config.maxBuffer,
+            env: config.env
+        };
+    }, P.equals({
+        timeout: 10,
+        maxBuffer: 100,
+        env: { CTG_AGENT_PROC_ENV_TEST: "visible" }
+    }));

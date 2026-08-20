@@ -24,6 +24,8 @@
     "build:package": "run-s clean compile:package minify",
     "prepare": "npm run build:package",
     "test": "tsx tests/test.ts",
+    "test:parity": "tsx tests/parity/test.ts",
+    "test:live": "npm run test:parity",
     "recompile": "tsc --watch",
     "watch": "tsx watch tests/test.ts",
     "dev": "run-p recompile watch"

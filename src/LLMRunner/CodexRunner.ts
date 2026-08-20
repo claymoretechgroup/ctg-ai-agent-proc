@@ -29,7 +29,8 @@ export default class CodexRunner extends LLMRunner {
             ...(config.args === undefined ? {} : { args: config.args }),
             ...(config.timeout === undefined ? {} : { timeout: config.timeout }),
             ...(config.maxBuffer === undefined ? {} : { maxBuffer: config.maxBuffer }),
-            ...(config.env === undefined ? {} : { env: config.env })
+            ...(config.env === undefined ? {} : { env: config.env }),
+            ...(config.tokenMetric === undefined ? {} : { tokenMetric: config.tokenMetric })
         });
     }
 

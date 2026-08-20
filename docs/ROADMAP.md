@@ -214,7 +214,8 @@ Design local-model runner support separately from `AgentProc`:
 - CLI vs HTTP transport.
 - Model selection.
 - Timeout and process/transport policy.
-- How local runners compose with future token metrics and prompt templates.
+- How local runners compose with configured token metrics and future prompt
+  templates.
 
 ### LLMPromptTemplate
 
@@ -224,9 +225,12 @@ future APIs.
 
 ### LLMTokenMetric
 
-Consider introducing an independent token metric abstraction that can be passed
-through runner config, allowing one runner instance to compose with different
-token-counting strategies without subclassing.
+Implemented as a runner config dependency: `LLMRunner.tokenCount(text)`
+delegates to an optional `LLMTokenMetric`, with the existing length-over-four
+approximation retained as the default metric.
+
+Future work, if needed, is to provide concrete tokenizer-backed metrics for
+specific model families without changing the runner-facing abstraction.
 
 ## Phase 3. Release-Final Compile-Time Tests
 
@@ -238,3 +242,13 @@ surface:
 
 This should run with the normal release validation path, alongside `npm run
 check`, `npm test`, and `npm run build`.
+
+## Phase 4. Final Release Documentation
+
+Defer README and public class/API documentation until the implementation and
+release surface are settled:
+
+- Finalize `README.md` usage examples, package links, and release positioning.
+- Add or tighten class-level documentation for the public API.
+- Audit documentation links and package metadata before publishing.
+- Run the final package validation path after documentation is aligned.

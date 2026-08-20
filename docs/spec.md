@@ -35,6 +35,8 @@ export {
     ClaudeRunner,
     CodexRunner,
     LLMRunner,
+    LLMTokenMetric,
+    LLMTokenMetricError,
     LLMRunnerError
 };
 
@@ -50,7 +52,9 @@ export type {
     LLMRunnerErrorLogFormatter,
     LLMRunnerConfig,
     LLMRunnerRunConfig,
-    LLMRunnerResult
+    LLMRunnerResult,
+    LLMTokenMetricErrorData,
+    LLMTokenMetricErrorLogFormatter
 };
 ```
 
@@ -58,7 +62,7 @@ No other source modules are part of the public package contract.
 
 | ID | Requirement | Status |
 | --- | --- | --- |
-| EXP-01 | The package root exports exactly the six runtime names above. | **Covered** — `exports.ts` "root exports public runtime names". |
+| EXP-01 | The package root exports exactly the eight runtime names above. | **Covered** — `exports.ts` "root exports public runtime names". |
 | EXP-02 | The type exports above compile against the package entry point. | **Missing** — enforced only indirectly by `npm run check`; no test imports every exported type. |
 
 ## 2. LLMRunner
@@ -82,6 +86,9 @@ new LLMRunner(config: LLMRunnerConfig)
 | RUN-04 | Base `DEFAULT_ARGS` is an empty readonly array; subclasses may override it. | **Covered** — `runner.ts` "base default args are empty" and "subclass default args precede constructor args". |
 | RUN-04A | Optional `timeout`, `maxBuffer`, and `env` config values are forwarded to `execFile`. Omitted `env` inherits the parent process environment; provided `env` is the complete child environment and is not merged or filtered by the library. | **Covered** — `runner.ts` "env override is forwarded as complete child environment", "timeout failures are wrapped", and "maxBuffer failures are wrapped". |
 | RUN-04B | Invalid `timeout` / `maxBuffer` values throw `LLMRunnerError("INVALID_OPTIONS")`: `timeout` must be a non-negative finite integer, and `maxBuffer` must be a positive finite integer. | **Covered** — `runner.ts` "constructor rejects invalid timeout" and "constructor rejects invalid maxBuffer". |
+| RUN-04C | Optional constructor `tokenMetric` must be an `LLMTokenMetric` instance. The runner stores it by reference as a metric dependency, separate from the frozen execution config, and uses it for `tokenCount(text)`. | **Covered** — `runner.ts` "custom token metric is stored by reference" and "tokenCount uses custom token metric". |
+| RUN-04D | Invalid `tokenMetric` values throw `LLMRunnerError("INVALID_OPTIONS")`; when provided, `tokenMetric` must be an `LLMTokenMetric` instance. | **Covered** — `runner.ts` "constructor rejects invalid token metric". |
+| RUN-04E | When omitted, `tokenMetric` defaults to a new base `LLMTokenMetric` instance. | **Covered** — `runner.ts` "default token metric is initialized". |
 
 ### 2.2 Running Prompts
 
@@ -108,6 +115,12 @@ async tokenCount(text: string): Promise<number>
 | ID | Requirement | Status |
 | --- | --- | --- |
 | RUN-10 | Base implementation returns `Math.ceil(text.length / 4)`. | **Covered** — `runner.ts` "base tokenCount uses length over four approximation". |
+| RUN-10A | `LLMTokenMetric` is a public concrete base class intended for subclassing. Its public `count(text)` method returns `Promise<number>` and delegates to protected `measure(text)` followed by protected `validateCount(measurement)`. `count()` is final by convention, not technically final in TypeScript. | **Covered** — `runner.ts` "base token metric uses length over four approximation", "custom token metric can validate rich measurements", and custom metric subclass tests. |
+| RUN-10B | The base `measure(text)` implementation returns `Math.ceil(text.length / 4)`. | **Covered** — `runner.ts` "base token metric uses length over four approximation". |
+| RUN-10C | `tokenMetric.count()` failures propagate unwrapped. | **Covered** — `runner.ts` "token metric failures propagate". |
+| RUN-10D | Base `validateCount(measurement)` accepts only finite, non-negative integers and returns the validated number. | **Covered** — `runner.ts` "base token metric uses length over four approximation" and "base token metric rejects invalid measurements". |
+| RUN-10E | Invalid metric measurements throw `LLMTokenMetricError("INVALID_COUNT")` with `data.measurement`. | **Covered** — `runner.ts` "base token metric rejects invalid measurements". |
+| RUN-10F | Subclasses should override `measure()` for measurement logic and may override `validateCount()` when `measure()` returns a richer measurement shape. | **Documented** — Gap G-3. |
 
 ### 2.4 Summarization
 
@@ -141,7 +154,7 @@ static init<C, T extends LLMRunner>(this: new (config: C) => T, config: C): T
 | CLR-01 | Default command is `claude`. | **Covered** — `claudeRunner.ts`. |
 | CLR-02 | `DEFAULT_ARGS` are `--safe-mode --print`, placed before constructor args. | **Covered** — `claudeRunner.ts`. |
 | CLR-03 | Per-run args are placed after constructor args and before the prompt. | **Covered** — `claudeRunner.ts`. |
-| CLR-04 | `command`, `cwd`, `prefixArgs`, `args`, `timeout`, `maxBuffer`, and `env` overrides are forwarded to the base class. | **Covered** — `claudeRunner.ts` command override tests, "forwards cwd override to base runner", "adds prefix args before safe mode defaults", and "forwards process controls to base runner". |
+| CLR-04 | `command`, `cwd`, `prefixArgs`, `args`, `timeout`, `maxBuffer`, `env`, and `tokenMetric` overrides are forwarded to the base class. | **Covered** — `claudeRunner.ts` command override tests, "forwards cwd override to base runner", "adds prefix args before safe mode defaults", and "forwards process controls to base runner". |
 
 ### 3.2 CodexRunner
 
@@ -150,14 +163,14 @@ static init<C, T extends LLMRunner>(this: new (config: C) => T, config: C): T
 | CXR-01 | Default command is `codex`. | **Covered** — `codexRunner.ts`. |
 | CXR-02 | `DEFAULT_ARGS` are the sterile `exec` invocation (`exec --ignore-user-config --ignore-rules --ephemeral -c project_root_markers=[] -c project_doc_max_bytes=0 -c features.memories=false -c memories.use_memories=false`), placed before constructor args. | **Covered** — `codexRunner.ts`. |
 | CXR-03 | Per-run args are placed after constructor args and before the prompt. | **Covered** — `codexRunner.ts`. |
-| CXR-04 | `command`, `cwd`, `prefixArgs`, `args`, `timeout`, `maxBuffer`, and `env` overrides are forwarded to the base class. | **Covered** — `codexRunner.ts` command override tests, "forwards cwd override to base runner", "adds prefix args before codex defaults", and "forwards process controls to base runner". |
+| CXR-04 | `command`, `cwd`, `prefixArgs`, `args`, `timeout`, `maxBuffer`, `env`, and `tokenMetric` overrides are forwarded to the base class. | **Covered** — `codexRunner.ts` command override tests, "forwards cwd override to base runner", "adds prefix args before codex defaults", and "forwards process controls to base runner". |
 
 ### 3.3 CLI Parity
 
 | ID | Requirement | Status |
 | --- | --- | --- |
-| PAR-01 | `ClaudeRunner.init().run(p)` is observably equivalent to `claude --safe-mode --print "p"` in a shell. | **Blocked** — Gap G-2. Requires opt-in live tests. |
-| PAR-02 | `CodexRunner.init().run(p)` is observably equivalent to the sterile `codex exec ...` shell invocation. | **Blocked** — Gap G-2. |
+| PAR-01 | `ClaudeRunner.init().run(p)` is observably equivalent to `claude --safe-mode --print "p"` in a shell. | **Covered Live** — asserted by the opt-in `tests/parity/` suite when `CTG_AGENT_PROC_LIVE=1` and the Claude CLI/auth/model setup are available. |
+| PAR-02 | `CodexRunner.init().run(p)` is observably equivalent to the sterile `codex exec ...` shell invocation. | **Covered Live** — asserted by the opt-in `tests/parity/` suite when `CTG_AGENT_PROC_LIVE=1` and the Codex CLI/auth/model setup are available. |
 
 ## 4. LLMRunnerError
 
@@ -171,6 +184,17 @@ static init<C, T extends LLMRunner>(this: new (config: C) => T, config: C): T
 | RERR-06 | `isType()` returns true for known types and false otherwise. | **Covered** — `errorClass.ts` "runner error isType checks known types". |
 | RERR-07 | `log()` with no formatter writes `{name, type, msg, data}` JSON to `console.error` and returns the same string. | **Covered** — `errorClass.ts`. |
 | RERR-08 | `log(formatter)` passes the error instance to the formatter and writes/returns its output. | **Covered** — `errorClass.ts`. |
+
+## 4A. LLMTokenMetricError
+
+| ID | Requirement | Status |
+| --- | --- | --- |
+| TMERR-01 | `TYPES` is bidirectional for `INVALID_COUNT: 1001`. | **Covered** — `errorClass.ts` "token metric error types map is bidirectional". |
+| TMERR-02 | Constructor assigns `name`, `type`, `msg`, `message`, `data`, and forwards `data.cause`. | **Covered** — `errorClass.ts` "token metric error constructor assigns public fields". |
+| TMERR-03 | Constructing with an unknown type string throws. | **Covered** — `errorClass.ts` "token metric error constructor rejects unknown type". |
+| TMERR-04 | `data` is frozen shallowly. | **Covered** — `errorClass.ts` "token metric error data is shallow frozen". |
+| TMERR-05 | `is()` narrows correctly. | **Covered** — `errorClass.ts` "is narrows token metric errors". |
+| TMERR-06 | `log()` default and custom-formatter behavior matches the runner and prompt error contracts. | **Covered** — `errorClass.ts` "token metric error log writes default output" and "token metric error log accepts custom formatter". |
 
 ## 5. LLMPrompt
 
@@ -320,31 +344,61 @@ Invalid construction config is validated minimally: an empty or whitespace-only
 Non-zero exits reject as `COMMAND_FAILED` even when stdout was produced. Partial
 stdout remains available as `error.data.stdout`.
 
-### G-2. Live CLI parity tests (spec.md §8.2)
+### G-2. Live CLI parity tests — resolved with opt-in coverage
 
 The concrete runner defaults (`--safe-mode --print`; the sterile `codex exec`
-config set) have never been proven against installed CLIs. Needs: an opt-in
-suite (env-var gated, excluded from `npm test`), and a decision on what
-"parity" asserts — argv construction only, or observable output equivalence.
-Note this includes verifying the flags even exist in current CLI versions;
-vendor flag churn is a standing risk for frozen `DEFAULT_ARGS`.
+config set) are covered by an opt-in live suite under `tests/parity/`. The
+suite is gated by `CTG_AGENT_PROC_LIVE=1`, excluded from the default hermetic
+`npm test` path, and validates observable CLI-boundary behavior against direct
+Claude and Codex CLI invocations when the required CLI/auth/model setup is
+available.
 
-Planned in `docs/ROADMAP.md` Phase 1 as opt-in live runner parity and
-integration coverage, including prompt-operation flows for summarization and
-truncation.
+The suite also covers prompt-operation integration, filesystem side effects,
+web-search parity, timeout behavior, version capture, runner selection, extra
+runner args, and watchdog isolation. Completed machine-local runs are tracked
+in `docs/ROADMAP.md` Phase 1.
+
+Vendor CLI flag churn remains a standing maintenance risk. Future failures in
+the live suite may indicate local setup drift, model variance, vendor CLI
+changes, or a runner regression; the test output is intended to make those
+cases diagnosable.
 
 ### G-3. Token counting strategy — resolved for v0.1
 
-The base runner uses `Math.ceil(text.length / 4)` as a deterministic
-approximate default. Subclasses may override `tokenCount(text)` for model-aware
-counting. v0.1 does not add tokenizer dependencies or require exact model token
-counts.
+The base runner uses a default `LLMTokenMetric` instance whose public
+`count(text)` method returns a validated token count. Runner instances may be
+configured with a custom subclass instance:
 
-Future consideration: introduce an `LLMTokenMetric` abstraction that can be
-passed through runner config. That would let prompt building call
-`runner.tokenCount()` while allowing a runner instance to compose with different
-token metrics without subclassing or committing the runner class to one
-tokenizer strategy.
+```ts
+export class LLMTokenMetric {
+    async count(text: string): Promise<number>;
+    protected async measure(text: string): Promise<unknown>;
+    protected validateCount(measurement: unknown): number;
+}
+```
+
+`count(text)` is final by convention, not technically final in TypeScript. It
+delegates to protected `measure(text)` and then to protected
+`validateCount(measurement)`.
+
+Subclasses should override `measure()` for measurement logic. Subclasses may
+override `validateCount()` when `measure()` returns a richer measurement shape,
+such as a JSON object containing several token-related metrics.
+
+The base `measure(text)` returns `Math.ceil(text.length / 4)`. The base
+`validateCount()` accepts only finite, non-negative integers. Invalid
+measurements throw `LLMTokenMetricError("INVALID_COUNT")`.
+
+`LLMRunner.tokenCount(text)` remains the public runner counting method and
+delegates to the configured metric. Metric errors propagate unchanged.
+
+v0.1 does not add tokenizer dependencies or require exact model token counts.
+Metric implementations are responsible for their own approximation/exactness
+policy, including validating their own returned counts.
+
+If subclassing becomes cumbersome for common use cases, future work may add a
+function-backed metric subclass while preserving the class-based runner
+contract.
 
 ### G-4. Summarization contract — resolved
 
@@ -488,5 +542,7 @@ hermetic (no live CLIs) unless noted.
 
 1. **Type-level surface checks** — EXP-02 and RUN-14 need a dedicated test
    typecheck config or equivalent `tsc --noEmit` fixture coverage.
-2. **Opt-in live parity and integration suite** — PAR-01/02 per G-2, gated
-   behind an environment flag and excluded from `npm test`.
+2. **Maintain opt-in live parity and integration coverage** — PAR-01/02 are
+   covered by the `CTG_AGENT_PROC_LIVE=1` suite, but this remains an ongoing
+   maintenance area because external CLI flags, auth, and model behavior can
+   drift.

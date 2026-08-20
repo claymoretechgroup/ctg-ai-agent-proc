@@ -10,5 +10,7 @@ export default CTGTest.init("exports")
         "LLMPrompt",
         "LLMPromptError",
         "LLMRunner",
+        "LLMTokenMetric",
+        "LLMTokenMetricError",
         "LLMRunnerError"
     ].sort()));

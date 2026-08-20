@@ -1,6 +1,12 @@
 import CTGTest, { CTGTestPredicates as P } from "ctg-js-test";
-import { ClaudeRunner } from "../../src/index.ts";
+import { ClaudeRunner, LLMTokenMetric } from "../../src/index.ts";
 import { createCwdReporterCommand, runnerTestCwd } from "./helpers.ts";
+
+class TestTokenMetric extends LLMTokenMetric {
+    override async count(): Promise<number> {
+        return 1;
+    }
+}
 
 export default CTGTest.init("claude runner")
     .assert("uses claude as default command", () => {
@@ -51,20 +57,25 @@ export default CTGTest.init("claude runner")
     }, P.equals(runnerTestCwd))
     .assert("forwards process controls to base runner", () => {
         const env = { CTG_AGENT_PROC_ENV_TEST: "visible" };
+        const tokenMetric = new TestTokenMetric();
         const runner = new ClaudeRunner({
             timeout: 10,
             maxBuffer: 100,
-            env
+            env,
+            tokenMetric
         });
-        const config = (runner as unknown as { config: { timeout?: number,maxBuffer?: number,env?: NodeJS.ProcessEnv } }).config;
+        const config = (runner as unknown as { config: { timeout?: number,maxBuffer?: number,env?: NodeJS.ProcessEnv },tokenMetric: LLMTokenMetric }).config;
+        const storedTokenMetric = (runner as unknown as { tokenMetric: LLMTokenMetric }).tokenMetric;
 
         return {
             timeout: config.timeout,
             maxBuffer: config.maxBuffer,
-            env: config.env
+            env: config.env,
+            tokenMetric: storedTokenMetric === tokenMetric
         };
     }, P.equals({
         timeout: 10,
         maxBuffer: 100,
-        env: { CTG_AGENT_PROC_ENV_TEST: "visible" }
+        env: { CTG_AGENT_PROC_ENV_TEST: "visible" },
+        tokenMetric: true
     }));

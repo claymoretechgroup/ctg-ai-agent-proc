@@ -1,5 +1,5 @@
 import CTGTest, { CTGTestPredicates as P } from "ctg-js-test";
-import { LLMRunner, LLMRunnerError, type LLMRunnerConfig, type LLMRunnerResult } from "../../src/index.ts";
+import { LLMRunner, LLMRunnerError, LLMTokenMetric, LLMTokenMetricError, type LLMRunnerConfig, type LLMRunnerResult } from "../../src/index.ts";
 import { captureRejected, captureThrown, runnerTestCwd } from "./helpers.ts";
 
 const REPORT_SCRIPT = "process.stdout.write(JSON.stringify({argv:process.argv.slice(1),cwd:process.cwd()}));";
@@ -59,6 +59,67 @@ class ShellReportingRunner extends LLMRunner {
     }
 }
 
+class FixedTokenMetric extends LLMTokenMetric {
+    calls: string[] = [];
+
+    constructor(private readonly value: number) {
+        super();
+    }
+
+    protected override async measure(text: string): Promise<unknown> {
+        this.calls.push(text);
+        return this.value;
+    }
+}
+
+class LengthTokenMetric extends LLMTokenMetric {
+    protected override async measure(text: string): Promise<unknown> {
+        return text.length;
+    }
+}
+
+class ThrowingTokenMetric extends LLMTokenMetric {
+    constructor(private readonly error: Error) {
+        super();
+    }
+
+    protected override async measure(): Promise<unknown> {
+        throw this.error;
+    }
+}
+
+class InvalidTokenMetric extends LLMTokenMetric {
+    constructor(private readonly measurement: unknown) {
+        super();
+    }
+
+    protected override async measure(): Promise<unknown> {
+        return this.measurement;
+    }
+}
+
+class RichTokenMetric extends LLMTokenMetric {
+    protected override async measure(text: string): Promise<unknown> {
+        return {
+            inputTokens: text.length,
+            outputReserve: 200
+        };
+    }
+
+    protected override validateCount(measurement: unknown): number {
+        if (
+            typeof measurement === "object"
+            && measurement !== null
+            && "inputTokens" in measurement
+            && typeof measurement.inputTokens === "number"
+        ) {
+            return measurement.inputTokens;
+        }
+
+        return super.validateCount(measurement);
+    }
+}
+
 export default CTGTest.init("runner")
     .assert("constructor rejects empty command", () => {
         const caught = captureThrown(() => {
@@ -99,6 +160,20 @@ export default CTGTest.init("runner")
             new LLMRunner({
                 command: process.execPath,
                 maxBuffer: 0
+            });
+        });
+
+        return LLMRunnerError.is(caught)
+            && caught.type === "INVALID_OPTIONS"
+            && caught.data.command === process.execPath;
+    }, P.isTrue())
+    .assert("constructor rejects invalid token metric", () => {
+        const caught = captureThrown(() => {
+            new LLMRunner({
+                command: process.execPath,
+                tokenMetric: {
+                    count: async () => 1
+                } as LLMTokenMetric
             });
         });
 
@@ -287,6 +362,95 @@ export default CTGTest.init("runner")
         four: 1,
         five: 2
     }))
+    .assert("base token metric uses length over four approximation", async () => {
+        const tokenMetric = new LLMTokenMetric();
+
+        return {
+            empty: await tokenMetric.count(""),
+            one: await tokenMetric.count("a"),
+            four: await tokenMetric.count("abcd"),
+            five: await tokenMetric.count("abcde")
+        };
+    }, P.equals({
+        empty: 0,
+        one: 1,
+        four: 1,
+        five: 2
+    }))
+    .assert("base token metric rejects invalid measurements", async () => {
+        const runner = new LLMRunner({
+            command: process.execPath,
+            tokenMetric: new InvalidTokenMetric(-1)
+        });
+        const caught = await captureRejected(async () => {
+            await runner.tokenCount("text");
+        });
+
+        return LLMTokenMetricError.is(caught)
+            && caught.type === "INVALID_COUNT"
+            && caught.data.measurement === -1;
+    }, P.isTrue())
+    .assert("custom token metric can validate rich measurements", async () => {
+        const runner = new LLMRunner({
+            command: process.execPath,
+            tokenMetric: new RichTokenMetric()
+        });
+
+        return await runner.tokenCount("abcdef");
+    }, P.equals(6))
+    .assert("default token metric is initialized", () => {
+        const runner = new LLMRunner({
+            command: process.execPath
+        });
+        const tokenMetric = (runner as unknown as {tokenMetric: LLMTokenMetric}).tokenMetric;
+
+        return tokenMetric instanceof LLMTokenMetric;
+    }, P.isTrue())
+    .assert("custom token metric is stored by reference", () => {
+        const tokenMetric = new FixedTokenMetric(1);
+        const runner = new LLMRunner({
+            command: process.execPath,
+            tokenMetric
+        });
+        const storedTokenMetric = (runner as unknown as {tokenMetric: LLMTokenMetric}).tokenMetric;
+
+        return storedTokenMetric === tokenMetric;
+    }, P.isTrue())
+    .assert("tokenCount uses custom token metric", async () => {
+        const tokenMetric = new FixedTokenMetric(42);
+        const runner = new LLMRunner({
+            command: process.execPath,
+            tokenMetric
+        });
+
+        return {
+            count: await runner.tokenCount("custom text"),
+            calls: tokenMetric.calls
+        };
+    }, P.equals({
+        count: 42,
+        calls: ["custom text"]
+    }))
+    .assert("tokenCount awaits custom token metric", async () => {
+        const runner = new LLMRunner({
+            command: process.execPath,
+            tokenMetric: new LengthTokenMetric()
+        });
+
+        return await runner.tokenCount("abcdef");
+    }, P.equals(6))
+    .assert("token metric failures propagate", async () => {
+        const expected = new Error("metric failed");
+        const runner = new LLMRunner({
+            command: process.execPath,
+            tokenMetric: new ThrowingTokenMetric(expected)
+        });
+        const caught = await captureRejected(async () => {
+            await runner.tokenCount("text");
+        });
+
+        return caught === expected;
+    }, P.isTrue())
     .assert("base summarize invokes run once with text and returns result", async () => {
         const runner = new SummarizeRunner();
         const result = await runner.summarize("important details");

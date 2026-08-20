@@ -4,6 +4,11 @@ export {
 } from "./LLMPrompt/index.js";
 
 export {
+    LLMTokenMetric,
+    LLMTokenMetricError
+} from "./LLMTokenMetric/index.js";
+
+export {
     ClaudeRunner,
     CodexRunner,
     LLMRunner,
@@ -27,3 +32,8 @@ export type {
     LLMRunnerRunConfig,
     LLMRunnerResult
 } from "./LLMRunner/index.js";
+
+export type {
+    LLMTokenMetricErrorData,
+    LLMTokenMetricErrorLogFormatter
+} from "./LLMTokenMetric/index.js";

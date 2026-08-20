@@ -1,6 +1,7 @@
 // Dependencies:
 import { execFile } from "node:child_process";
 import { LLMRunnerError } from "./LLMRunnerError.js";
+import { LLMTokenMetric } from "../LLMTokenMetric/index.js";
 
 /**
  * 
@@ -8,28 +9,30 @@ import { LLMRunnerError } from "./LLMRunnerError.js";
  * 
  */
 
-// Defines config for how to call an LLM from CLI:
+// Defines construction config for a runner:
 export interface LLMRunnerConfig {
-    command: string;          // Command that calls LLM
-    cwd?: string;             // What directory LLM is called in
-    prefixArgs?: string[];    // Arguments to pass before subclass defaults
-    args?: string[];          // Arguments to pass to the command that's calling the LLM
-    timeout?: number;         // Milliseconds before execFile terminates the child
-    maxBuffer?: number;       // Maximum stdout/stderr buffer size in bytes
-    env?: NodeJS.ProcessEnv;  // Complete child environment override
+    command: string;               // CLI command used to invoke the runner
+    cwd?: string;                  // Working directory for child process calls
+    prefixArgs?: string[];         // Arguments placed before subclass defaults
+    args?: string[];               // Arguments placed after subclass defaults
+    timeout?: number;              // Milliseconds before execFile terminates the child
+    maxBuffer?: number;            // Maximum stdout/stderr buffer size in bytes
+    env?: NodeJS.ProcessEnv;       // Complete child environment override
+    tokenMetric?: LLMTokenMetric;  // Token counting dependency for prompt operations
 }
 
 // Defines config for a single runner invocation:
 export interface LLMRunnerRunConfig {
-    args?: string[];    // Arguments to add to this prompt invocation
+    args?: string[];    // Arguments placed after constructor args and before the prompt
 }
 
 // Defines what to return from an LLM response:
 export interface LLMRunnerResult {
-    result: string;     // What's returned form stdout
-    error: string;      // What's returned from stderr
+    result: string;     // Process stdout
+    error: string;      // Process stderr
 }
 
+// Defines native execFile failure details used for public error wrapping:
 type ExecFileFailure = {
     code?: unknown;
     signal?: unknown;
@@ -37,6 +40,7 @@ type ExecFileFailure = {
     stderr?: unknown;
 };
 
+// Defines successful execFile output:
 type ExecFileOutput = {
     stdout: string;
     stderr: string;
@@ -55,7 +59,8 @@ export default class LLMRunner {
     static readonly DEFAULT_ARGS: readonly string[] = [];
 
     /* Instance Fields */
-    protected readonly config: Readonly<LLMRunnerConfig>;
+    protected readonly config: Readonly<LLMRunnerConfig>;  // Frozen child-process execution config
+    protected readonly tokenMetric: LLMTokenMetric;        // Token counting dependency
 
     // CONSTRUCTOR \\
     constructor(config: LLMRunnerConfig) {
@@ -67,10 +72,11 @@ export default class LLMRunner {
             });
         }
 
-        this.validateProcessControls(config);
+        this.validateConfig(config);
 
         const defaults = (this.constructor as typeof LLMRunner).DEFAULT_ARGS;
 
+        this.tokenMetric = config.tokenMetric ?? new LLMTokenMetric();
         this.config = Object.freeze({
             command,
             ...(config.cwd === undefined ? {} : { cwd: config.cwd }),
@@ -103,7 +109,7 @@ export default class LLMRunner {
 
     // Returns token count for the given text:
     async tokenCount(text: string): Promise<number> {
-        return Math.ceil(text.length / 4);
+        return await this.tokenMetric.count(text);
     }
 
     // Summarizes text. LLMPrompt enforces token budgets after summarization.
@@ -178,8 +184,8 @@ export default class LLMRunner {
         );
     }
 
-    // Validates process-control values before invoking child processes:
-    private validateProcessControls(config: LLMRunnerConfig): void {
+    // Validates construction config before invoking child processes:
+    private validateConfig(config: LLMRunnerConfig): void {
         if (
             config.timeout !== undefined
             && (!Number.isInteger(config.timeout) || config.timeout < 0)
@@ -194,6 +200,15 @@ export default class LLMRunner {
             && (!Number.isInteger(config.maxBuffer) || config.maxBuffer <= 0)
         ) {
             throw new LLMRunnerError("INVALID_OPTIONS", "LLMRunner maxBuffer must be a positive finite integer.", {
+                command: config.command
+            });
+        }
+
+        if (
+            config.tokenMetric !== undefined
+            && !(config.tokenMetric instanceof LLMTokenMetric)
+        ) {
+            throw new LLMRunnerError("INVALID_OPTIONS", "LLMRunner tokenMetric must be an LLMTokenMetric instance.", {
                 command: config.command
             });
         }

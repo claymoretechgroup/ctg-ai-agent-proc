@@ -1,5 +1,5 @@
 import CTGTest, { CTGTestPredicates as P } from "ctg-js-test";
-import { LLMPromptError, LLMRunnerError } from "../../src/index.ts";
+import { LLMPromptError, LLMRunnerError, LLMTokenMetricError } from "../../src/index.ts";
 
 const captureErrorLog = (fn: () => string): {output: string, logged: string} => {
     const original = console.error;
@@ -103,6 +103,67 @@ export default CTGTest.init("error class")
 
         return log.output === "COMMAND_NOT_FOUND:missing"
             && log.logged === "COMMAND_NOT_FOUND:missing";
+    }, P.isTrue())
+    .assert("token metric error types map is bidirectional", () => {
+        return LLMTokenMetricError.TYPES.INVALID_COUNT === 1001
+            && LLMTokenMetricError.TYPES[1001] === "INVALID_COUNT";
+    }, P.isTrue())
+    .assert("token metric error constructor assigns public fields", () => {
+        const cause = new Error("native");
+        const err = new LLMTokenMetricError("INVALID_COUNT", "Invalid count.", {
+            measurement: -1,
+            cause
+        });
+
+        return err.name === "LLMTokenMetricError"
+            && err.type === "INVALID_COUNT"
+            && err.msg === "Invalid count."
+            && err.message === "Invalid count."
+            && err.data.measurement === -1
+            && err.cause === cause;
+    }, P.isTrue())
+    .assert("token metric error constructor rejects unknown type", () => {
+        const caught = captureThrown(() => {
+            new LLMTokenMetricError("UNKNOWN", "Unknown.");
+        });
+
+        return caught instanceof Error
+            && caught.message === "Unknown LLMTokenMetricError type: UNKNOWN";
+    }, P.isTrue())
+    .assert("token metric error data is shallow frozen", () => {
+        const err = new LLMTokenMetricError("INVALID_COUNT", "Invalid count.", {
+            measurement: -1
+        });
+
+        return Object.isFrozen(err.data);
+    }, P.isTrue())
+    .assert("is narrows token metric errors", () => {
+        return LLMTokenMetricError.is(new LLMTokenMetricError("INVALID_COUNT", "Invalid."))
+            && !LLMTokenMetricError.is(new Error("native"));
+    }, P.isTrue())
+    .assert("token metric error log writes default output", () => {
+        const err = new LLMTokenMetricError("INVALID_COUNT", "Invalid count.", {
+            measurement: -1
+        });
+        const log = captureErrorLog(() => err.log());
+        const parsed = JSON.parse(log.output);
+
+        return log.logged === log.output
+            && parsed.name === "LLMTokenMetricError"
+            && parsed.type === "INVALID_COUNT"
+            && parsed.msg === "Invalid count."
+            && parsed.data.measurement === -1;
+    }, P.isTrue())
+    .assert("token metric error log accepts custom formatter", () => {
+        const err = new LLMTokenMetricError("INVALID_COUNT", "Invalid count.", {
+            measurement: -1
+        });
+        const log = captureErrorLog(() => err.log((value) => {
+            return `${value.type}:${value.data.measurement}`;
+        }));
+
+        return log.output === "INVALID_COUNT:-1"
+            && log.logged === "INVALID_COUNT:-1";
     }, P.isTrue())
     .assert("prompt error log writes default output", () => {
         const err = new LLMPromptError("READ_FAILED", "Read failed.", {

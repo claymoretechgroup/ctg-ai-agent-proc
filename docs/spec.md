@@ -32,6 +32,8 @@ The root package exports:
 export {
     LLMPrompt,
     LLMPromptError,
+    LLMPromptTemplate,
+    LLMPromptTemplateError,
     ClaudeRunner,
     CodexRunner,
     LLMRunner,
@@ -44,10 +46,13 @@ export type {
     LLMPromptErrorData,
     LLMPromptErrorLogFormatter,
     LLMPromptOptions,
-    LLMPromptTemplate,
+    LLMPromptTemplateConfig,
     LLMPromptTemplateDelimiter,
+    LLMPromptTemplateErrorData,
+    LLMPromptTemplateErrorLogFormatter,
     LLMPromptTemplateOptions,
     LLMPromptTemplateValue,
+    LLMPromptTemplateValues,
     LLMRunnerErrorData,
     LLMRunnerErrorLogFormatter,
     LLMRunnerConfig,
@@ -62,7 +67,7 @@ No other source modules are part of the public package contract.
 
 | ID | Requirement | Status |
 | --- | --- | --- |
-| EXP-01 | The package root exports exactly the eight runtime names above. | **Covered** — `exports.ts` "root exports public runtime names". |
+| EXP-01 | The package root exports exactly the ten runtime names above. | **Covered** — `exports.ts` "root exports public runtime names". |
 | EXP-02 | The type exports above compile against the package entry point. | **Missing** — enforced only indirectly by `npm run check`; no test imports every exported type. |
 
 ## 2. LLMRunner
@@ -244,18 +249,22 @@ Defaults: template delimiter `[[ ]]`, `strict: true`, `cache: false`.
 
 ### 5.5 Template Operations
 
+`LLMPrompt` stores template operations as deferred `LLMPromptTemplateConfig`
+data and instantiates `LLMPromptTemplate` only while resolving operations at
+`run()` time.
+
 | ID | Requirement | Status |
 | --- | --- | --- |
 | PRM-19 | `applyTemplate` transforms the prompt-so-far; `applyTemplateText` / `applyTemplateFile` transform the supplied text / file contents and append. | **Covered** — `prompt.ts` happy paths plus "applyTemplateFile read failures throw prompt error". |
-| PRM-20 | Default delimiter is `[[ ]]`; custom delimiters are honored. | **Covered** — `prompt.ts` "template supports custom delimiter". |
-| PRM-21 | Delimiters containing regex metacharacters are escaped and treated literally. | **Covered** — `prompt.ts` "template supports regex metacharacter delimiters". |
-| PRM-22 | `strict: true` (default) throws `LLMPromptError("TEMPLATE_VALUE_NOT_FOUND")` with `data.key` on an unresolved placeholder. | **Covered** — `prompt.ts`. |
+| PRM-20 | Default delimiter is `[[ ]]`; custom delimiters are honored through `LLMPromptTemplate`. | **Covered** — `prompt.ts` "template supports custom delimiter". |
+| PRM-21 | Delimiters containing regex metacharacters are escaped and treated literally through `LLMPromptTemplate`. | **Covered** — `prompt.ts` "template supports regex metacharacter delimiters". |
+| PRM-22 | `strict: true` (default) lets `LLMPromptTemplateError("TEMPLATE_VALUE_NOT_FOUND")` propagate unchanged with `data.key` on an unresolved placeholder. | **Covered** — `prompt.ts` "strict template throws template error for unresolved placeholders". |
 | PRM-23 | `strict: false` leaves unresolved placeholders unchanged. | **Covered** — `prompt.ts`. |
 | PRM-24 | Extra template keys are ignored. | **Covered** — `prompt.ts` "template ignores extra keys". |
 | PRM-25 | Number template values are stringified via `String()`. | **Covered** — `prompt.ts` "template stringifies number values". |
 | PRM-26 | Repeated occurrences of the same placeholder are all replaced. | **Covered** — `prompt.ts` "template replaces repeated placeholders". |
 | PRM-27 | Inherited object properties do not resolve placeholders (`hasOwnProperty` guard) — e.g. a `[[toString]]` placeholder with an empty template throws under strict mode rather than injecting `function toString() ...`. | **Covered** — `prompt.ts` "template does not resolve inherited object properties". |
-| PRM-28 | Template delimiters must be a pair of non-empty distinct strings. Invalid delimiters throw `LLMPromptError("INVALID_OPTIONS")`. | **Covered** — `prompt.ts` "invalid template delimiters throw prompt error". |
+| PRM-28 | Template delimiters must be a pair of non-empty distinct strings. Invalid delimiters throw `LLMPromptTemplateError("INVALID_OPTIONS")` when the deferred operation resolves. | **Covered** — `prompt.ts` "invalid template delimiters throw template error". |
 
 ### 5.6 Join
 
@@ -295,6 +304,45 @@ Defaults: template delimiter `[[ ]]`, `strict: true`, `cache: false`.
 | PERR-04 | `data` is frozen shallowly; nested arrays/objects are not recursively frozen or defensively copied. | **Covered** — `errorClass.ts` "prompt error data is shallow frozen". |
 | PERR-05 | `is()` narrows correctly. | **Covered** — `errorClass.ts` "is narrows prompt errors". |
 | PERR-06 | `log()` default and custom-formatter behavior (same contract as RERR-07/08). | **Covered** — `errorClass.ts`. |
+
+## 7. LLMPromptTemplate
+
+`LLMPromptTemplate` is an immutable, runner-independent template applicator.
+It stores template values, delimiter config, and strict behavior, then applies
+that config to any supplied text.
+
+```ts
+new LLMPromptTemplate(config?: LLMPromptTemplateConfig)
+LLMPromptTemplate.init(config?: LLMPromptTemplateConfig): LLMPromptTemplate
+template.apply(text: string): string
+```
+
+| ID | Requirement | Status |
+| --- | --- | --- |
+| PTM-01 | `DEFAULT_DELIMITER` is `[[ ]]`. | **Covered** — `promptTemplate.ts` "default delimiter replaces strict values". |
+| PTM-02 | `init(config?)` returns a new `LLMPromptTemplate` equivalent to the constructor. | **Covered** — `promptTemplate.ts` "static init matches constructor behavior". |
+| PTM-03 | Constructor values are copied into a frozen own-property object; mutating the caller's values object after construction does not affect rendering. | **Covered** — `promptTemplate.ts` "config is frozen and values are copied". |
+| PTM-04 | Inherited value properties are ignored. | **Covered** — `promptTemplate.ts` "inherited value properties are ignored". |
+| PTM-05 | Delimiter defaults to `[[ ]]`; custom delimiters are honored. | **Covered** — `promptTemplate.ts` "default delimiter replaces strict values" and "supports custom delimiter". |
+| PTM-06 | Delimiters containing regex metacharacters are escaped and treated literally. | **Covered** — `promptTemplate.ts` "supports regex metacharacter delimiters". |
+| PTM-07 | `strict` defaults to `true`; unresolved placeholders throw `LLMPromptTemplateError("TEMPLATE_VALUE_NOT_FOUND")` with `data.key`. | **Covered** — `promptTemplate.ts` "strict missing value throws template error". |
+| PTM-08 | `strict: false` leaves unresolved placeholders unchanged. | **Covered** — `promptTemplate.ts` "non-strict missing value remains unchanged". |
+| PTM-09 | Extra values are ignored. | **Covered** — `promptTemplate.ts` "extra values are ignored". |
+| PTM-10 | Number values are stringified via `String()`. | **Covered** — `promptTemplate.ts` "number values are stringified". |
+| PTM-11 | Repeated placeholders are all replaced. | **Covered** — `promptTemplate.ts` "repeated placeholders are all replaced". |
+| PTM-12 | Placeholder keys are not trimmed. | **Covered** — `promptTemplate.ts` "placeholder keys are not trimmed". |
+| PTM-13 | Template delimiters must be a pair of non-empty distinct strings. Invalid delimiters throw `LLMPromptTemplateError("INVALID_OPTIONS")` with `data.delimiter`. | **Covered** — `promptTemplate.ts` "invalid delimiter throws template error". |
+
+## 8. LLMPromptTemplateError
+
+| ID | Requirement | Status |
+| --- | --- | --- |
+| PTERR-01 | `TYPES` is bidirectional for `INVALID_OPTIONS: 1001`, `TEMPLATE_VALUE_NOT_FOUND: 1002`. | **Covered** — `errorClass.ts` "prompt template error types map is bidirectional" and `promptTemplate.ts` "error types map is bidirectional". |
+| PTERR-02 | Constructor assigns `name`, `type`, `msg`, `message`, `data`, and forwards `data.cause`. | **Covered** — `errorClass.ts` "prompt template error constructor assigns public fields" and `promptTemplate.ts` "error constructor assigns public fields". |
+| PTERR-03 | Constructing with an unknown type string throws. | **Covered** — `errorClass.ts` "prompt template error constructor rejects unknown type" and `promptTemplate.ts` "error constructor rejects unknown type". |
+| PTERR-04 | `data` is frozen shallowly. | **Covered** — `errorClass.ts` "prompt template error data is shallow frozen" and `promptTemplate.ts` "error data is shallow frozen". |
+| PTERR-05 | `is()` narrows correctly. | **Covered** — `errorClass.ts` "is narrows prompt template errors". |
+| PTERR-06 | `log()` default and custom-formatter behavior matches the other structured error contracts. | **Covered** — `errorClass.ts` "prompt template error log writes default output" and "prompt template error log accepts custom formatter"; `promptTemplate.ts` error log tests. |
 
 ---
 
@@ -408,10 +456,9 @@ invokes the same runner once with a summary-oriented prompt containing `text`
 and returns `result` from `run()`.
 
 Future consideration: a runner-level summary template could make this behavior
-configurable without subclassing. Defer for v0.1 because it would introduce new
-template syntax, validation, inheritance, and concrete-runner policy decisions.
-If this becomes public API, a dedicated `LLMPromptTemplate` abstraction may be
-cleaner than duplicating template behavior across `LLMRunner` and `LLMPrompt`.
+configurable without subclassing. If added, it should reuse the
+`LLMPromptTemplate` abstraction rather than duplicating template behavior in
+`LLMRunner`.
 
 ### G-5. Join cycle detection — resolved for v0.1
 

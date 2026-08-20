@@ -9,6 +9,8 @@ export default CTGTest.init("exports")
         "CodexRunner",
         "LLMPrompt",
         "LLMPromptError",
+        "LLMPromptTemplate",
+        "LLMPromptTemplateError",
         "LLMRunner",
         "LLMTokenMetric",
         "LLMTokenMetricError",

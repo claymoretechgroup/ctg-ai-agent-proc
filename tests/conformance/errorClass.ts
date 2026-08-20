@@ -1,5 +1,5 @@
 import CTGTest, { CTGTestPredicates as P } from "ctg-js-test";
-import { LLMPromptError, LLMRunnerError, LLMTokenMetricError } from "../../src/index.ts";
+import { LLMPromptError, LLMPromptTemplateError, LLMRunnerError, LLMTokenMetricError } from "../../src/index.ts";
 
 const captureErrorLog = (fn: () => string): {output: string, logged: string} => {
     const original = console.error;
@@ -164,6 +164,69 @@ export default CTGTest.init("error class")
 
         return log.output === "INVALID_COUNT:-1"
             && log.logged === "INVALID_COUNT:-1";
+    }, P.isTrue())
+    .assert("prompt template error types map is bidirectional", () => {
+        return LLMPromptTemplateError.TYPES.INVALID_OPTIONS === 1001
+            && LLMPromptTemplateError.TYPES.TEMPLATE_VALUE_NOT_FOUND === 1002
+            && LLMPromptTemplateError.TYPES[1001] === "INVALID_OPTIONS"
+            && LLMPromptTemplateError.TYPES[1002] === "TEMPLATE_VALUE_NOT_FOUND";
+    }, P.isTrue())
+    .assert("prompt template error constructor assigns public fields", () => {
+        const cause = new Error("native");
+        const err = new LLMPromptTemplateError("TEMPLATE_VALUE_NOT_FOUND", "Missing value.", {
+            key: "name",
+            cause
+        });
+
+        return err.name === "LLMPromptTemplateError"
+            && err.type === "TEMPLATE_VALUE_NOT_FOUND"
+            && err.msg === "Missing value."
+            && err.message === "Missing value."
+            && err.data.key === "name"
+            && err.cause === cause;
+    }, P.isTrue())
+    .assert("prompt template error constructor rejects unknown type", () => {
+        const caught = captureThrown(() => {
+            new LLMPromptTemplateError("UNKNOWN", "Unknown.");
+        });
+
+        return caught instanceof Error
+            && caught.message === "Unknown LLMPromptTemplateError type: UNKNOWN";
+    }, P.isTrue())
+    .assert("prompt template error data is shallow frozen", () => {
+        const err = new LLMPromptTemplateError("TEMPLATE_VALUE_NOT_FOUND", "Missing value.", {
+            key: "name"
+        });
+
+        return Object.isFrozen(err.data);
+    }, P.isTrue())
+    .assert("is narrows prompt template errors", () => {
+        return LLMPromptTemplateError.is(new LLMPromptTemplateError("INVALID_OPTIONS", "Invalid."))
+            && !LLMPromptTemplateError.is(new Error("native"));
+    }, P.isTrue())
+    .assert("prompt template error log writes default output", () => {
+        const err = new LLMPromptTemplateError("TEMPLATE_VALUE_NOT_FOUND", "Missing value.", {
+            key: "name"
+        });
+        const log = captureErrorLog(() => err.log());
+        const parsed = JSON.parse(log.output);
+
+        return log.logged === log.output
+            && parsed.name === "LLMPromptTemplateError"
+            && parsed.type === "TEMPLATE_VALUE_NOT_FOUND"
+            && parsed.msg === "Missing value."
+            && parsed.data.key === "name";
+    }, P.isTrue())
+    .assert("prompt template error log accepts custom formatter", () => {
+        const err = new LLMPromptTemplateError("TEMPLATE_VALUE_NOT_FOUND", "Missing value.", {
+            key: "name"
+        });
+        const log = captureErrorLog(() => err.log((value) => {
+            return `${value.type}:${value.data.key}`;
+        }));
+
+        return log.output === "TEMPLATE_VALUE_NOT_FOUND:name"
+            && log.logged === "TEMPLATE_VALUE_NOT_FOUND:name";
     }, P.isTrue())
     .assert("prompt error log writes default output", () => {
         const err = new LLMPromptError("READ_FAILED", "Read failed.", {

@@ -22,4 +22,16 @@ export default class LLMTokenMetric {
         return measurement;
     }
 
+    /**
+     *
+     * Static Methods
+     *
+     */
+
+    // Static Factory Method \\
+    // NOTE: Uses the static `this` constructor so inherited factories return the subclass type.
+    static init<T extends LLMTokenMetric>(this: new () => T): T {
+        return new this();
+    }
+
 }

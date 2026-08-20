@@ -377,6 +377,12 @@ export default CTGTest.init("runner")
         four: 1,
         five: 2
     }))
+    .assert("token metric static init returns metric instance", () => {
+        return LLMTokenMetric.init() instanceof LLMTokenMetric;
+    }, P.isTrue())
+    .assert("token metric static init returns subclass instance", () => {
+        return LengthTokenMetric.init() instanceof LengthTokenMetric;
+    }, P.isTrue())
     .assert("base token metric rejects invalid measurements", async () => {
         const runner = new LLMRunner({
             command: process.execPath,

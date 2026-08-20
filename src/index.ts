@@ -4,6 +4,11 @@ export {
 } from "./LLMPrompt/index.js";
 
 export {
+    LLMPromptTemplate,
+    LLMPromptTemplateError
+} from "./LLMPromptTemplate/index.js";
+
+export {
     LLMTokenMetric,
     LLMTokenMetricError
 } from "./LLMTokenMetric/index.js";
@@ -19,11 +24,17 @@ export type {
     LLMPromptErrorData,
     LLMPromptErrorLogFormatter,
     LLMPromptOptions,
-    LLMPromptTemplate,
     LLMPromptTemplateDelimiter,
     LLMPromptTemplateOptions,
-    LLMPromptTemplateValue
+    LLMPromptTemplateValue,
+    LLMPromptTemplateValues
 } from "./LLMPrompt/index.js";
+
+export type {
+    LLMPromptTemplateConfig,
+    LLMPromptTemplateErrorData,
+    LLMPromptTemplateErrorLogFormatter
+} from "./LLMPromptTemplate/index.js";
 
 export type {
     LLMRunnerErrorData,

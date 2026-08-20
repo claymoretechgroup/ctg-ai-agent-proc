@@ -3,6 +3,13 @@ import { readFileSync } from "node:fs";
 
 import type LLMRunner from "../LLMRunner/LLMRunner.js";
 import type { LLMRunnerResult, LLMRunnerRunConfig } from "../LLMRunner/LLMRunner.js";
+import { LLMPromptTemplate } from "../LLMPromptTemplate/index.js";
+import type {
+    LLMPromptTemplateConfig,
+    LLMPromptTemplateDelimiter,
+    LLMPromptTemplateValue,
+    LLMPromptTemplateValues
+} from "../LLMPromptTemplate/index.js";
 import { LLMPromptError } from "./LLMPromptError.js";
 
 /**
@@ -11,14 +18,11 @@ import { LLMPromptError } from "./LLMPromptError.js";
  * 
  */
 
-// Defines a valid value that can replace a template key:
-export type LLMPromptTemplateValue = string | number;
-
-// Defines template values keyed by template name:
-export type LLMPromptTemplate = Record<string, LLMPromptTemplateValue>;
-
-// Defines the opening and closing markers that surround template keys:
-export type LLMPromptTemplateDelimiter = readonly [string, string];
+export type {
+    LLMPromptTemplateDelimiter,
+    LLMPromptTemplateValue,
+    LLMPromptTemplateValues
+};
 
 // Defines options for how template replacements are applied:
 export interface LLMPromptTemplateOptions {
@@ -40,9 +44,9 @@ type LLMPromptOperation = {type: "append",text: string}
     | {type: "truncate",maxTokens: number}
     | {type: "truncateText",text: string,maxTokens: number}
     | {type: "truncateFile",path: string,maxTokens: number}
-    | {type: "applyTemplate",template: LLMPromptTemplate,options: LLMPromptTemplateOptions}
-    | {type: "applyTemplateText",text: string,template: LLMPromptTemplate,options: LLMPromptTemplateOptions}
-    | {type: "applyTemplateFile",path: string,template: LLMPromptTemplate,options: LLMPromptTemplateOptions}
+    | {type: "applyTemplate",templateConfig: LLMPromptTemplateConfig}
+    | {type: "applyTemplateText",text: string,templateConfig: LLMPromptTemplateConfig}
+    | {type: "applyTemplateFile",path: string,templateConfig: LLMPromptTemplateConfig}
     | {type: "join",prompt: LLMPrompt};
 
 /**
@@ -135,26 +139,26 @@ export default class LLMPrompt {
 
     // Applies template values to the stored prompt when run:
     applyTemplate(
-        template: LLMPromptTemplate = {},
+        values: LLMPromptTemplateValues = {},
         options: LLMPromptTemplateOptions = {}
     ): this {
-        this.validateTemplateOptions(options);
-        this.operations.push({type: "applyTemplate",template,options});
+        this.operations.push({
+            type: "applyTemplate",
+            templateConfig: this.toTemplateConfig(values, options)
+        });
         return this;
     }
 
     // Applies template values to text and appends the result to the stored prompt:
     applyTemplateText(
         text: string,
-        template: LLMPromptTemplate = {},
+        values: LLMPromptTemplateValues = {},
         options: LLMPromptTemplateOptions = {}
     ): this {
-        this.validateTemplateOptions(options);
         this.operations.push({
             type: "applyTemplateText",
             text,
-            template,
-            options
+            templateConfig: this.toTemplateConfig(values, options)
         });
         return this;
     }
@@ -162,15 +166,13 @@ export default class LLMPrompt {
     // Applies template values to file contents and appends the result to the stored prompt:
     applyTemplateFile(
         path: string,
-        template: LLMPromptTemplate = {},
+        values: LLMPromptTemplateValues = {},
         options: LLMPromptTemplateOptions = {}
     ): this {
-        this.validateTemplateOptions(options);
         this.operations.push({
             type: "applyTemplateFile",
             path,
-            template,
-            options
+            templateConfig: this.toTemplateConfig(values, options)
         });
         return this;
     }
@@ -263,27 +265,15 @@ export default class LLMPrompt {
                     break;
 
                 case "applyTemplate":
-                    result = this.applyTemplateToText(
-                        result, 
-                        operation.template, 
-                        operation.options
-                    );
+                    result = LLMPromptTemplate.init(operation.templateConfig).apply(result);
                     break;
 
                 case "applyTemplateText":
-                    result += this.applyTemplateToText(
-                        operation.text, 
-                        operation.template, 
-                        operation.options
-                    );
+                    result += LLMPromptTemplate.init(operation.templateConfig).apply(operation.text);
                     break;
 
                 case "applyTemplateFile":
-                    result += this.applyTemplateToText(
-                        this.readTextFile(operation.path),
-                        operation.template,
-                        operation.options
-                    );
+                    result += LLMPromptTemplate.init(operation.templateConfig).apply(this.readTextFile(operation.path));
                     break;
 
                 case "join":
@@ -349,49 +339,16 @@ export default class LLMPrompt {
         }
     }
 
-    // Validates template delimiters before storing prompt operations:
-    private validateTemplateOptions(options: LLMPromptTemplateOptions): void {
-        const delimiter = options.delimiter;
-
-        if (delimiter === undefined) {
-            return;
-        }
-
-        if (
-            delimiter.length !== 2
-            || typeof delimiter[0] !== "string"
-            || typeof delimiter[1] !== "string"
-            || delimiter[0] === ""
-            || delimiter[1] === ""
-            || delimiter[0] === delimiter[1]
-        ) {
-            throw new LLMPromptError("INVALID_OPTIONS", "Template delimiter must contain two non-empty distinct strings.");
-        }
-    }
-
-    // Applies a template replacement pass to the given text:
-    private applyTemplateToText(text: string, template: LLMPromptTemplate, options: LLMPromptTemplateOptions): string {
-
-        const delimiter = options.delimiter ?? LLMPrompt.DEFAULT_TEMPLATE_DELIMITER;
-        const strict = options.strict ?? true;
-        const escape = (value: string) => value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-        const pattern = new RegExp(`${escape(delimiter[0])}([\\s\\S]*?)${escape(delimiter[1])}`,"g");
-
-        return text.replace(pattern, (match, key: string) => {
-            if (Object.prototype.hasOwnProperty.call(template, key)) {
-                return String(template[key]);
-            }
-
-            if (strict) {
-                throw new LLMPromptError(
-                    "TEMPLATE_VALUE_NOT_FOUND", 
-                    `Could not resolve template value "${key}".`,
-                    {key}
-                );
-            }
-
-            return match;
-        });
+    // Converts prompt template method args into deferred template config:
+    private toTemplateConfig(
+        values: LLMPromptTemplateValues,
+        options: LLMPromptTemplateOptions
+    ): LLMPromptTemplateConfig {
+        return {
+            values,
+            ...(options.delimiter === undefined ? {} : { delimiter: options.delimiter }),
+            ...(options.strict === undefined ? {} : { strict: options.strict })
+        };
     }
 
     /**

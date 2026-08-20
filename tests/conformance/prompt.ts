@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import CTGTest, { CTGTestPredicates as P } from "ctg-js-test";
-import { LLMPrompt, LLMPromptError, LLMRunner, type LLMRunnerRunConfig } from "../../src/index.ts";
+import { LLMPrompt, LLMPromptError, LLMPromptTemplateError, LLMRunner, type LLMRunnerRunConfig } from "../../src/index.ts";
 import { captureRejected, captureThrown } from "./helpers.ts";
 
 class PromptRunner extends LLMRunner {
@@ -331,7 +331,7 @@ export default CTGTest.init("prompt")
 
         return runner.prompts[0];
     }, P.equals("Hello [[name]]"))
-    .assert("strict template throws prompt error for unresolved placeholders", async () => {
+    .assert("strict template throws template error for unresolved placeholders", async () => {
         const runner = new PromptRunner();
         const caught = await captureRejected(async () => {
             await new LLMPrompt("Hello [[name]]")
@@ -339,7 +339,7 @@ export default CTGTest.init("prompt")
                 .run(runner);
         });
 
-        return LLMPromptError.is(caught)
+        return LLMPromptTemplateError.is(caught)
             && caught.type === "TEMPLATE_VALUE_NOT_FOUND"
             && caught.data.key === "name";
     }, P.isTrue())
@@ -375,7 +375,7 @@ export default CTGTest.init("prompt")
                 .run(runner);
         });
 
-        return LLMPromptError.is(caught)
+        return LLMPromptTemplateError.is(caught)
             && caught.type === "TEMPLATE_VALUE_NOT_FOUND"
             && caught.data.key === "toString";
     }, P.isTrue())
@@ -419,25 +419,28 @@ export default CTGTest.init("prompt")
             && caught.type === "INVALID_OPTIONS"
             && caught.data.maxTokens === Number.POSITIVE_INFINITY;
     }, P.isTrue())
-    .assert("invalid template delimiters throw prompt error", () => {
-        const emptyOpen = captureThrown(() => {
-            new LLMPrompt("Hello [[name]]")
-                .applyTemplate({ name: "Codex" }, { delimiter: ["", "]]"] });
+    .assert("invalid template delimiters throw template error", async () => {
+        const emptyOpen = await captureRejected(async () => {
+            await new LLMPrompt("Hello [[name]]")
+                .applyTemplate({ name: "Codex" }, { delimiter: ["", "]]"] })
+                .run(new PromptRunner());
         });
-        const emptyClose = captureThrown(() => {
-            new LLMPrompt("Hello [[name]]")
-                .applyTemplate({ name: "Codex" }, { delimiter: ["[[", ""] });
+        const emptyClose = await captureRejected(async () => {
+            await new LLMPrompt("Hello [[name]]")
+                .applyTemplate({ name: "Codex" }, { delimiter: ["[[", ""] })
+                .run(new PromptRunner());
         });
-        const sameDelimiter = captureThrown(() => {
-            new LLMPrompt("Hello [[name]]")
-                .applyTemplate({ name: "Codex" }, { delimiter: ["|", "|"] });
+        const sameDelimiter = await captureRejected(async () => {
+            await new LLMPrompt("Hello [[name]]")
+                .applyTemplate({ name: "Codex" }, { delimiter: ["|", "|"] })
+                .run(new PromptRunner());
         });
 
-        return LLMPromptError.is(emptyOpen)
+        return LLMPromptTemplateError.is(emptyOpen)
             && emptyOpen.type === "INVALID_OPTIONS"
-            && LLMPromptError.is(emptyClose)
+            && LLMPromptTemplateError.is(emptyClose)
             && emptyClose.type === "INVALID_OPTIONS"
-            && LLMPromptError.is(sameDelimiter)
+            && LLMPromptTemplateError.is(sameDelimiter)
             && sameDelimiter.type === "INVALID_OPTIONS";
     }, P.isTrue())
     .assert("template placeholder keys are not trimmed", async () => {
@@ -448,7 +451,7 @@ export default CTGTest.init("prompt")
                 .run(runner);
         });
 
-        return LLMPromptError.is(caught)
+        return LLMPromptTemplateError.is(caught)
             && caught.type === "TEMPLATE_VALUE_NOT_FOUND"
             && caught.data.key === " name ";
     }, P.isTrue())

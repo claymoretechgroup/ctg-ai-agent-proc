@@ -84,6 +84,12 @@ v0.1 is POSIX-first. Runners invoke CLI commands directly with Node
 `execFile`; Windows `.cmd`/`.ps1` shim handling is out of scope for this
 release.
 
+Streaming support keeps the current `execFile` path as the default
+non-streaming behavior. Calls that explicitly enable streaming use `spawn`
+while preserving the same final `{ result, error }` contract. The base runner
+owns raw stdout/stderr chunk delivery; concrete runners own any structured
+event parsing and vendor-specific flags.
+
 ### 2.1 Construction and Config
 
 ```ts
@@ -102,6 +108,10 @@ new LLMRunner(config: LLMRunnerConfig)
 | RUN-04C | Optional constructor `tokenMetric` must be an `LLMTokenMetric` instance. The runner stores it by reference as a metric dependency, separate from the frozen execution config, and uses it for `tokenCount(text)`. | **Covered** — `runner.ts` "custom token metric is stored by reference" and "tokenCount uses custom token metric". |
 | RUN-04D | Invalid `tokenMetric` values throw `LLMRunnerError("INVALID_OPTIONS")`; when provided, `tokenMetric` must be an `LLMTokenMetric` instance. | **Covered** — `runner.ts` "constructor rejects invalid token metric". |
 | RUN-04E | When omitted, `tokenMetric` defaults to a new base `LLMTokenMetric` instance. | **Covered** — `runner.ts` "default token metric is initialized". |
+| RUN-04F | `streamOutput?: boolean` defaults to `false`. When false, runner execution continues through the existing `execFile` path. When true, the invocation uses the streaming `spawn` path while still accumulating final stdout/stderr. | **Covered** — `streaming/runnerStreaming.ts`. |
+| RUN-04G | `streamMode?: "raw" \| "events"` explicitly selects the streaming contract and defaults to `"raw"` when `streamOutput === true`. `"raw"` emits stdout/stderr chunk events from the base runner. `"events"` lets concrete runners emit runner-native event instances from their own parsers. | **Covered** — `streaming/runnerStreaming.ts`, `streaming/codexStreaming.ts`, and `streaming/claudeStreaming.ts`. |
+| RUN-04H | `onStream?: (event) => void` is the single streaming callback and defaults to `undefined`. The event class depends on `streamMode`, rather than handler presence implicitly selecting raw or structured output. | **Covered** — `streaming/runnerStreaming.ts`. |
+| RUN-04I | Providing `streamMode` or `onStream` is invalid unless streaming is enabled by the constructor config or the same run config, and throws `LLMRunnerError("INVALID_OPTIONS")`. Streaming options must be explicit rather than inert or implicitly enabling streaming. | **Covered** — `streaming/runnerStreaming.ts`. |
 
 ### 2.2 Running Prompts
 
@@ -118,6 +128,8 @@ async run(prompt: string, config: LLMRunnerRunConfig = {}): Promise<LLMRunnerRes
 | RUN-09 | `run()` wraps native `execFile` failures in `LLMRunnerError`: missing commands become `COMMAND_NOT_FOUND`; other process failures become `COMMAND_FAILED`; partial stdout/stderr and optional signal diagnostics are preserved when available. | **Covered** — `runner.ts` "missing command failures are wrapped" and "non-zero command failures are wrapped with output". |
 | RUN-09A | Prompts are delivered as the final argv element. Very large prompts may exceed OS argument-size limits; v0.1 does not preflight prompt size or switch to stdin delivery. | **Documented** — Gap G-6. |
 | RUN-09B | Child stdin is closed immediately after spawn. Runners do not use stdin for prompt delivery, and CLIs must observe EOF rather than an open pipe waiting for additional input. | **Covered** — `runner.ts` "child stdin is closed after spawn". |
+| RUN-09C | Streaming invocations use `spawn`, close stdin, append incoming chunks to bounded stdout/stderr accumulators, and resolve to the existing `LLMRunnerResult` shape when the child exits with code 0. Non-streaming invocations continue to use `execFile` by default. | **Covered** — `streaming/runnerStreaming.ts`. |
+| RUN-09D | Process failures still throw `LLMRunnerError("COMMAND_NOT_FOUND")` for missing commands and `COMMAND_FAILED` for non-zero exits, timeouts, signals, and buffer-limit failures, preserving accumulated stdout/stderr diagnostics. | **Covered** — `streaming/runnerStreaming.ts` covers non-zero, timeout, and buffer failures. |
 
 ### 2.3 Token Counting
 
@@ -168,6 +180,7 @@ static init<C, T extends LLMRunner>(this: new (config: C) => T, config: C): T
 | CLR-02 | `DEFAULT_ARGS` are `--safe-mode --print`, placed before constructor args. | **Covered** — `claudeRunner.ts`. |
 | CLR-03 | Per-run args are placed after constructor args and before the prompt. | **Covered** — `claudeRunner.ts`. |
 | CLR-04 | `command`, `cwd`, `prefixArgs`, `args`, `timeout`, `maxBuffer`, `env`, and `tokenMetric` overrides are forwarded to the base class. | **Covered** — `claudeRunner.ts` command override tests, "forwards cwd override to base runner", "adds prefix args before safe mode defaults", and "forwards process controls to base runner". |
+| CLR-05 | When `streamOutput === true` and `streamMode === "events"`, `ClaudeRunner` adds the Claude CLI stream-json mode (`--output-format stream-json --verbose`), parses emitted events into typed stream event instances, and reconstructs the final `result` from structured output when available. | **Covered Hermetically and Live** — `streaming/claudeStreaming.ts`; live parity passed with Claude Code `2.1.239`. |
 
 ### 3.2 CodexRunner
 
@@ -177,6 +190,7 @@ static init<C, T extends LLMRunner>(this: new (config: C) => T, config: C): T
 | CXR-02 | `DEFAULT_ARGS` are the sterile `exec` invocation (`exec --ignore-user-config --ignore-rules --ephemeral -c project_root_markers=[] -c project_doc_max_bytes=0 -c features.memories=false -c memories.use_memories=false`), placed before constructor args. | **Covered** — `codexRunner.ts`. |
 | CXR-03 | Per-run args are placed after constructor args and before the prompt. | **Covered** — `codexRunner.ts`. |
 | CXR-04 | `command`, `cwd`, `prefixArgs`, `args`, `timeout`, `maxBuffer`, `env`, and `tokenMetric` overrides are forwarded to the base class. | **Covered** — `codexRunner.ts` command override tests, "forwards cwd override to base runner", "adds prefix args before codex defaults", and "forwards process controls to base runner". |
+| CXR-05 | When `streamOutput === true` and `streamMode === "events"`, `CodexRunner` adds `--json`, parses Codex JSONL events, emits typed stream event instances, and reconstructs the final `result` from parsed events when the JSONL schema exposes the final answer. | **Covered Hermetically and Live** — `streaming/codexStreaming.ts`; live parity passed with `codex-cli 0.149.0`. |
 
 ### 3.3 CLI Parity
 
@@ -655,6 +669,141 @@ argv element, and stdin is not used as an additional prompt channel.
 
 This avoids mode changes in CLIs that inspect non-TTY stdin and wait for
 additional piped input when the pipe remains open.
+
+### G-7B. Output streaming — resolved hermetically
+
+Default `LLMRunner` execution still uses `execFile`, which buffers
+stdout/stderr and settles only when the child exits. That preserves the
+existing quiet `{ result, error }` contract for callers that do not opt into
+streaming.
+
+Invocations with `streamOutput === true` use a `spawn` path. The streaming path
+keeps accumulating stdout/stderr for the existing final result:
+
+```ts
+type LLMRunnerOutputStream = "stdout" | "stderr";
+
+type LLMRunnerStreamMode = "raw" | "events";
+
+class LLMRunnerStreamEvent {
+    readonly source: string;
+    readonly raw?: unknown;
+}
+
+class LLMRunnerOutputEvent extends LLMRunnerStreamEvent {
+    readonly stream: LLMRunnerOutputStream;
+    readonly chunk: string;
+}
+
+class CodexRunnerEvent extends LLMRunnerStreamEvent {
+    readonly type?: string;
+    readonly payload: unknown;
+}
+
+class ClaudeRunnerEvent extends LLMRunnerStreamEvent {
+    readonly type?: string;
+    readonly payload: unknown;
+}
+
+type LLMRunnerStreamHandler = (event: LLMRunnerStreamEvent) => void;
+
+export interface LLMRunnerConfig {
+    command: string;
+    cwd?: string;
+    prefixArgs?: string[];
+    args?: string[];
+    timeout?: number;
+    maxBuffer?: number;
+    env?: NodeJS.ProcessEnv;
+    tokenMetric?: LLMTokenMetric;
+    streamOutput?: boolean;
+    streamMode?: LLMRunnerStreamMode;
+    onStream?: LLMRunnerStreamHandler;
+}
+
+export interface LLMRunnerRunConfig {
+    args?: string[];
+    streamOutput?: boolean;
+    streamMode?: LLMRunnerStreamMode;
+    onStream?: LLMRunnerStreamHandler;
+}
+```
+
+`streamOutput` defaults to `false` so existing callers retain the current
+`execFile` behavior. Handler presence does not implicitly switch execution
+paths. Callers must explicitly set `streamOutput: true`.
+
+`streamMode` makes the stream contract explicit. `"raw"` means the base runner
+emits `LLMRunnerOutputEvent` instances for stdout/stderr chunks. `"events"`
+means the concrete runner may opt into a structured vendor mode and emit typed
+event instances from its parser. If omitted while `streamOutput` is true, the
+mode should default to `"raw"` because that is the only universal child-process
+stream.
+
+`onStream` defaults to `undefined`. A streaming run without a handler still uses
+the `spawn` path and accumulates the final result, but emits no callbacks.
+Providing `streamMode` or `onStream` is invalid unless streaming is enabled by
+constructor config or the same run config, and should throw
+`LLMRunnerError("INVALID_OPTIONS")`; those options are streaming-only and
+should not be silently ignored.
+
+When streaming is enabled, the base runner:
+
+- invoke `onStream(new LLMRunnerOutputEvent(...))` for raw mode as child data
+  arrives;
+- continue accumulating stdout/stderr so `run()` still resolves to
+  `LLMRunnerResult`;
+- keep `maxBuffer` semantics by enforcing the configured byte cap against the
+  accumulated output;
+- preserve the current error wrapping shape, including partial stdout/stderr
+  diagnostics;
+- isolates `onStream` handler exceptions so observer failures do not kill the
+  child process.
+
+Raw output streaming is implemented and universal because every runner process
+exposes stdout and stderr. Structured events are runner-specific: each concrete
+runner chooses its own CLI flags and parser, then emits runner-native event
+instances such as `CodexRunnerEvent` and `ClaudeRunnerEvent`. Base stream
+events stay limited to process output. Text, usage, reasoning, tool activity,
+and file activity are semantic interpretations of a vendor stream and remain
+inside the runner event payload rather than normalized into base event classes.
+
+Internally, each run derives an execution context from constructor
+`LLMRunnerConfig` plus per-run `LLMRunnerRunConfig`. The context is not a
+separate public config surface; it is the effective invocation state used by
+the execution path and subclass hooks.
+
+Codex CLI `--json` writes a JSONL event stream to stdout and reports final
+turn usage in `turn.completed`. `CodexRunner` should own JSONL buffering,
+line-splitting, parsing, event-class construction, and final-result
+reconstruction. It should reconstruct `LLMRunnerResult.result` from parsed JSONL
+when the Codex event schema reliably exposes the final assistant answer.
+This is covered hermetically with fixture JSONL and live parity against
+`codex-cli 0.149.0`.
+
+Claude's CLI structured mode is analogous:
+`--output-format stream-json --verbose`. `ClaudeRunner` parses its event stream
+into typed event instances rather than leaking the vendor event schema through
+the base API. This is covered hermetically with fixture stream-json and live
+parity against Claude Code `2.1.239`.
+
+Ollama remains separate future runner work, but the two-layer design should fit
+it without special casing. `ollama run` streams answer text on stdout, and the
+HTTP APIs return NDJSON token events by default. A future `OllamaRunner` can
+emit `LLMRunnerOutputEvent` instances for raw token text and an
+`OllamaRunnerEvent` for parsed NDJSON payloads, including final metrics such as
+`prompt_eval_count` and `eval_count`.
+
+Token accounting should consume runner-native event payloads where the runner
+can provide observed usage. This does not replace `LLMRunner.tokenCount(text)`,
+which remains the prompt-budget estimation interface. Instead, usage payloads
+represent observed run metrics and can feed monitor/cost reporting.
+
+Remaining implementation questions:
+
+- how to expose asynchronous handlers if monitor publishing needs backpressure;
+- whether future Codex JSONL and Claude stream-json schema changes need parser
+  adjustments beyond the currently covered CLI versions.
 
 ### G-8. Prompt numeric validation — resolved
 

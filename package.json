@@ -1,6 +1,6 @@
 {
   "name": "ctg-ai-agent-proc",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "A deterministic orchestrator for agentic work using an asynchronous task queue",
   "type": "module",
   "main": "./dist/index.js",
@@ -24,6 +24,7 @@
     "build:package": "run-s clean compile:package minify",
     "prepare": "npm run build:package",
     "test": "tsx tests/test.ts",
+    "test:streaming": "tsx tests/streaming/test.ts",
     "test:types": "tsc -p tsconfig.types.json",
     "test:orchestration": "node --import tsx tests/orchestration/test.ts",
     "test:parity": "tsx tests/parity/test.ts",

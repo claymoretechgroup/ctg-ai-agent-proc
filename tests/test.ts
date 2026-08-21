@@ -11,6 +11,9 @@ import runner from "./conformance/runner.ts";
 import claudeRunner from "./conformance/claudeRunner.ts";
 import codexRunner from "./conformance/codexRunner.ts";
 import agentProc from "./conformance/agentProc.ts";
+import runnerStreaming from "./streaming/runnerStreaming.ts";
+import codexStreaming from "./streaming/codexStreaming.ts";
+import claudeStreaming from "./streaming/claudeStreaming.ts";
 
 const state = await CTGTest.init("ctg-ai-agent-proc hermetic conformance")
     .chain("error class", errorClass)
@@ -21,6 +24,9 @@ const state = await CTGTest.init("ctg-ai-agent-proc hermetic conformance")
     .chain("claude runner", claudeRunner)
     .chain("codex runner", codexRunner)
     .chain("agent proc", agentProc)
+    .chain("runner streaming", runnerStreaming)
+    .chain("codex streaming", codexStreaming)
+    .chain("claude streaming", claudeStreaming)
     .start(undefined, {
         haltOnFailure: false,
         timeout: 1000

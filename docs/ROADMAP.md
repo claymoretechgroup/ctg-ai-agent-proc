@@ -71,6 +71,10 @@ Detailed design notes are archived in
 - Timeout parity passed on this machine for Claude Code `2.1.237` and
   `codex-cli 0.148.0`, proving direct CLI baselines and concrete runners settle
   under a 1ms configured process timeout in the controlled live timeout worker.
+- Streaming parity passed on this machine for Claude Code `2.1.239` and
+  `codex-cli 0.149.0`, proving direct structured CLI stream baselines and
+  concrete runner `streamMode: "events"` invocations emit typed events and
+  preserve the final `LLMRunnerResult` contract.
 
 ### Non-Blocking Watch Items
 
@@ -206,6 +210,71 @@ This is roadmap work, not a v0.1 release blocker.
 
 These are likely future classes or abstractions. They should be designed
 separately from the immediate `AgentProc` work.
+
+### LLMRunner Output Streaming
+
+Add incremental runner output without changing the final `LLMRunnerResult`
+boundary:
+
+- Base raw streaming is implemented: a `spawn`-based streaming path preserves
+  final stdout/stderr accumulation, timeout behavior, `maxBuffer` enforcement,
+  closed stdin, and `LLMRunnerError` wrapping.
+- The default path remains `execFile` when `streamOutput !== true`; `spawn` is
+  used only for explicitly streaming invocations.
+- Implemented base config includes `streamOutput?: boolean`, defaulting to
+  `false`, plus `streamMode?: "raw" | "events"` and one `onStream(event)`
+  callback. `streamMode` defaults to `"raw"` only when streaming is enabled;
+  providing `streamMode` or `onStream` is invalid unless streaming is enabled
+  by constructor config or the same run config.
+- Implemented stream event classes cover the base stream event, raw process
+  output, and runner-native structured events. Vendor semantics such as text,
+  usage, tool activity, file activity, and reasoning remain in runner event
+  payloads instead of normalized base classes.
+- Implemented fixture-backed structured parsers for `streamMode: "events"`.
+- `CodexRunner` opts into `codex exec --json`, parses JSONL in the subclass,
+  and reconstructs the final `LLMRunnerResult.result` from parsed assistant
+  message events.
+- `ClaudeRunner` opts into `--output-format stream-json --verbose`, parses
+  stream-json in the subclass, and reconstructs the final
+  `LLMRunnerResult.result` from structured output.
+- Feed usage data from runner-native event payloads into monitor/cost reporting
+  without changing `LLMRunner.tokenCount(text)`, which remains the prompt-budget
+  estimation interface.
+
+Completed base streaming tests cover raw stdout/stderr streaming, final result
+compatibility, validation, timeout/buffer failures, and non-zero failures.
+Completed parser tests cover fixture Codex JSONL and Claude stream-json streams.
+Live parity passed on this machine for Claude Code `2.1.239` and
+`codex-cli 0.149.0`.
+
+Use a dedicated streaming test area rather than folding these checks into the
+existing runner conformance files:
+
+```text
+tests/
+  streaming/
+    test.ts
+    runnerStreaming.ts
+    helpers.ts
+    fixtures/
+      codex-jsonl.txt
+      claude-stream-json.txt
+
+  parity/
+    codexStreamingParity.ts
+    claudeStreamingParity.ts
+```
+
+`tests/streaming/` should be hermetic and safe for the default test path. It
+should use local fake commands and fixture JSONL/NDJSON data to prove the public
+streaming contract without requiring Codex, Claude, Ollama, network access, or
+auth state.
+
+The live streaming parity files follow the existing `tests/parity/` gating
+model. They run only when `CTG_AGENT_PROC_LIVE=1` and the required
+CLI/auth/model setup is available. These tests prove that real Codex and Claude
+structured stream modes map into the typed event classes and still preserve the
+final `LLMRunnerResult` contract.
 
 ### OllamaRunner
 

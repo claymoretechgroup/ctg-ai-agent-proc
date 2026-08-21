@@ -15,8 +15,12 @@ export {
 
 export {
     ClaudeRunner,
+    ClaudeRunnerEvent,
     CodexRunner,
+    CodexRunnerEvent,
     LLMRunner,
+    LLMRunnerOutputEvent,
+    LLMRunnerStreamEvent,
     LLMRunnerError
 } from "./LLMRunner/index.js";
 
@@ -45,8 +49,11 @@ export type {
     LLMRunnerErrorData,
     LLMRunnerErrorLogFormatter,
     LLMRunnerConfig,
+    LLMRunnerOutputStream,
     LLMRunnerRunConfig,
-    LLMRunnerResult
+    LLMRunnerResult,
+    LLMRunnerStreamHandler,
+    LLMRunnerStreamMode
 } from "./LLMRunner/index.js";
 
 export type {

@@ -17,20 +17,27 @@ import type {
     LLMRunnerErrorData,
     LLMRunnerErrorLogFormatter,
     LLMRunnerConfig,
+    LLMRunnerOutputStream,
     LLMRunnerRunConfig,
     LLMRunnerResult,
+    LLMRunnerStreamHandler,
+    LLMRunnerStreamMode,
     LLMTokenMetricErrorData,
     LLMTokenMetricErrorLogFormatter
 } from "../../src/index.ts";
 import {
     CTGAgentProc,
     CTGAgentProcError,
+    ClaudeRunnerEvent,
+    CodexRunnerEvent,
     LLMRunner,
     LLMPrompt,
     LLMPromptTemplate,
     LLMPromptTemplateError,
     LLMPromptError,
     LLMRunnerError,
+    LLMRunnerOutputEvent,
+    LLMRunnerStreamEvent,
     LLMTokenMetricError
 } from "../../src/index.ts";
 
@@ -83,6 +90,9 @@ const runnerResult: LLMRunnerResult = {
     result: "ok",
     error: ""
 };
+const runnerOutputStream: LLMRunnerOutputStream = "stdout";
+const runnerStreamMode: LLMRunnerStreamMode = "raw";
+const runnerStreamHandler: LLMRunnerStreamHandler = () => undefined;
 
 const agentProcErrorData: CTGAgentProcErrorData = {
     agentID: "agent",
@@ -128,8 +138,11 @@ type PublicTypeSmoke = Assert<IsAssignable<
         LLMRunnerErrorData,
         LLMRunnerErrorLogFormatter,
         LLMRunnerConfig,
+        LLMRunnerOutputStream,
         LLMRunnerRunConfig,
         LLMRunnerResult,
+        LLMRunnerStreamHandler,
+        LLMRunnerStreamMode,
         LLMTokenMetricErrorData,
         LLMTokenMetricErrorLogFormatter
     ],
@@ -144,6 +157,9 @@ void promptOptions;
 void runnerConfig;
 void runnerRunConfig;
 void runnerResult;
+void runnerOutputStream;
+void runnerStreamMode;
+void runnerStreamHandler;
 void agentProcErrorData;
 void promptErrorData;
 void promptTemplateErrorData;
@@ -156,8 +172,12 @@ void runnerErrorFormatter;
 void tokenMetricErrorFormatter;
 
 new CTGAgentProcError("UNKNOWN_RUNNER", "Missing runner.");
+new ClaudeRunnerEvent("runner", { type: "result" });
+new CodexRunnerEvent("runner", { type: "turn.completed" });
 new LLMPromptError("READ_FAILED", "Read failed.");
 new LLMPromptTemplate(promptTemplateConfig);
 new LLMPromptTemplateError("TEMPLATE_VALUE_NOT_FOUND", "Missing value.");
 new LLMRunnerError("COMMAND_FAILED", "Command failed.");
+new LLMRunnerStreamEvent("runner");
+new LLMRunnerOutputEvent("runner", "stdout", "chunk");
 new LLMTokenMetricError("INVALID_COUNT", "Invalid count.");

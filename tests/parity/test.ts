@@ -2,7 +2,9 @@ import { spawn } from "node:child_process";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { runClaudeParity } from "./claudeParity.ts";
+import { runClaudeStreamingParity } from "./claudeStreamingParity.ts";
 import { runCodexParity } from "./codexParity.ts";
+import { runCodexStreamingParity } from "./codexStreamingParity.ts";
 import { runFilesystemSideEffects } from "./filesystemSideEffects.ts";
 import { runPromptIntegration } from "./promptIntegration.ts";
 import { runTimeoutBehavior } from "./timeoutBehavior.ts";
@@ -22,6 +24,8 @@ type WorkerSuite = "claude"
     | "prompt:codex"
     | "timeout:claude"
     | "timeout:codex"
+    | "streaming:claude"
+    | "streaming:codex"
     | "web:claude"
     | "web:codex";
 
@@ -36,6 +40,8 @@ const allSuiteNames = [
     "prompt:codex",
     "timeout:claude",
     "timeout:codex",
+    "streaming:claude",
+    "streaming:codex",
     "web:claude",
     "web:codex"
 ] as const satisfies readonly WorkerSuite[];
@@ -47,6 +53,7 @@ const workerSuites = (): WorkerSuite[] => {
             `prompt:${name}` as const,
             `filesystem:${name}` as const,
             `timeout:${name}` as const,
+            `streaming:${name}` as const,
             `web:${name}` as const
         ];
 
@@ -117,6 +124,14 @@ const runWorker = async (suite: WorkerSuite): Promise<void> => {
 
         case "timeout:codex":
             await runTimeoutBehavior("codex");
+            return;
+
+        case "streaming:claude":
+            await runClaudeStreamingParity();
+            return;
+
+        case "streaming:codex":
+            await runCodexStreamingParity();
             return;
 
         case "web:claude":
@@ -262,6 +277,8 @@ if (workerIndex >= 0) {
         && suite !== "prompt:codex"
         && suite !== "timeout:claude"
         && suite !== "timeout:codex"
+        && suite !== "streaming:claude"
+        && suite !== "streaming:codex"
         && suite !== "web:claude"
         && suite !== "web:codex"
     ) {

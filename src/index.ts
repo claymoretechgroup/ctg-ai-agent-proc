@@ -20,6 +20,11 @@ export {
     LLMRunnerError
 } from "./LLMRunner/index.js";
 
+export {
+    CTGAgentProc,
+    CTGAgentProcError
+} from "./CTGAgentProc/index.js";
+
 export type {
     LLMPromptErrorData,
     LLMPromptErrorLogFormatter,
@@ -48,3 +53,11 @@ export type {
     LLMTokenMetricErrorData,
     LLMTokenMetricErrorLogFormatter
 } from "./LLMTokenMetric/index.js";
+
+export type {
+    CTGAgentProcAgentFunction,
+    CTGAgentProcAgentProps,
+    CTGAgentProcConfig,
+    CTGAgentProcErrorData,
+    CTGAgentProcErrorLogFormatter
+} from "./CTGAgentProc/index.js";

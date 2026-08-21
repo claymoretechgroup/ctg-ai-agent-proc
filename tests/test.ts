@@ -10,6 +10,7 @@ import promptTemplate from "./conformance/promptTemplate.ts";
 import runner from "./conformance/runner.ts";
 import claudeRunner from "./conformance/claudeRunner.ts";
 import codexRunner from "./conformance/codexRunner.ts";
+import agentProc from "./conformance/agentProc.ts";
 
 const state = await CTGTest.init("ctg-ai-agent-proc hermetic conformance")
     .chain("error class", errorClass)
@@ -19,6 +20,7 @@ const state = await CTGTest.init("ctg-ai-agent-proc hermetic conformance")
     .chain("runner", runner)
     .chain("claude runner", claudeRunner)
     .chain("codex runner", codexRunner)
+    .chain("agent proc", agentProc)
     .start(undefined, {
         haltOnFailure: false,
         timeout: 1000

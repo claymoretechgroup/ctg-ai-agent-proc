@@ -5,6 +5,8 @@ export default CTGTest.init("exports")
     .assert("root exports public runtime names", () => {
         return Object.keys(api).sort();
     }, P.equals([
+        "CTGAgentProc",
+        "CTGAgentProcError",
         "ClaudeRunner",
         "CodexRunner",
         "LLMPrompt",

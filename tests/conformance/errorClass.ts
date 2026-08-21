@@ -1,5 +1,11 @@
 import CTGTest, { CTGTestPredicates as P } from "ctg-js-test";
-import { LLMPromptError, LLMPromptTemplateError, LLMRunnerError, LLMTokenMetricError } from "../../src/index.ts";
+import {
+    CTGAgentProcError,
+    LLMPromptError,
+    LLMPromptTemplateError,
+    LLMRunnerError,
+    LLMTokenMetricError
+} from "../../src/index.ts";
 
 const captureErrorLog = (fn: () => string): {output: string, logged: string} => {
     const original = console.error;
@@ -294,4 +300,80 @@ export default CTGTest.init("error class")
     .assert("is narrows prompt errors", () => {
         return LLMPromptError.is(new LLMPromptError("INVALID_OPTIONS", "Invalid."))
             && !LLMPromptError.is(new Error("native"));
+    }, P.isTrue())
+    .assert("agent proc error types map is bidirectional", () => {
+        return CTGAgentProcError.TYPES.RUNNER_ALREADY_BOUND === 1001
+            && CTGAgentProcError.TYPES.PROMPT_ALREADY_BOUND === 1002
+            && CTGAgentProcError.TYPES.UNKNOWN_RUNNER === 1003
+            && CTGAgentProcError.TYPES.UNKNOWN_PROMPT === 1004
+            && CTGAgentProcError.TYPES[1001] === "RUNNER_ALREADY_BOUND"
+            && CTGAgentProcError.TYPES[1002] === "PROMPT_ALREADY_BOUND"
+            && CTGAgentProcError.TYPES[1003] === "UNKNOWN_RUNNER"
+            && CTGAgentProcError.TYPES[1004] === "UNKNOWN_PROMPT";
+    }, P.isTrue())
+    .assert("agent proc error constructor assigns public fields", () => {
+        const cause = new Error("native");
+        const err = new CTGAgentProcError("UNKNOWN_RUNNER", "Missing runner.", {
+            agentID: "agent",
+            runnerID: "main",
+            cause
+        });
+
+        return err.name === "CTGAgentProcError"
+            && err.type === "UNKNOWN_RUNNER"
+            && err.msg === "Missing runner."
+            && err.message === "Missing runner."
+            && err.data.agentID === "agent"
+            && err.data.runnerID === "main"
+            && err.cause === cause;
+    }, P.isTrue())
+    .assert("agent proc error constructor rejects unknown type", () => {
+        const caught = captureThrown(() => {
+            new CTGAgentProcError("UNKNOWN", "Unknown.");
+        });
+
+        return caught instanceof Error
+            && caught.message === "Unknown CTGAgentProcError type: UNKNOWN";
+    }, P.isTrue())
+    .assert("agent proc error data is shallow frozen", () => {
+        const err = new CTGAgentProcError("UNKNOWN_PROMPT", "Missing prompt.", {
+            promptID: "base"
+        });
+
+        return Object.isFrozen(err.data);
+    }, P.isTrue())
+    .assert("is narrows agent proc errors", () => {
+        return CTGAgentProcError.is(new CTGAgentProcError("UNKNOWN_PROMPT", "Missing prompt."))
+            && !CTGAgentProcError.is(new Error("native"));
+    }, P.isTrue())
+    .assert("agent proc error isType checks known types", () => {
+        return CTGAgentProcError.isType("RUNNER_ALREADY_BOUND")
+            && CTGAgentProcError.isType("PROMPT_ALREADY_BOUND")
+            && CTGAgentProcError.isType("UNKNOWN_RUNNER")
+            && CTGAgentProcError.isType("UNKNOWN_PROMPT")
+            && !CTGAgentProcError.isType("UNKNOWN");
+    }, P.isTrue())
+    .assert("agent proc error log writes default output", () => {
+        const err = new CTGAgentProcError("UNKNOWN_RUNNER", "Missing runner.", {
+            runnerID: "main"
+        });
+        const log = captureErrorLog(() => err.log());
+        const parsed = JSON.parse(log.output);
+
+        return log.logged === log.output
+            && parsed.name === "CTGAgentProcError"
+            && parsed.type === "UNKNOWN_RUNNER"
+            && parsed.msg === "Missing runner."
+            && parsed.data.runnerID === "main";
+    }, P.isTrue())
+    .assert("agent proc error log accepts custom formatter", () => {
+        const err = new CTGAgentProcError("UNKNOWN_PROMPT", "Missing prompt.", {
+            promptID: "base"
+        });
+        const log = captureErrorLog(() => err.log((value) => {
+            return `${value.type}:${value.data.promptID}`;
+        }));
+
+        return log.output === "UNKNOWN_PROMPT:base"
+            && log.logged === "UNKNOWN_PROMPT:base";
     }, P.isTrue());

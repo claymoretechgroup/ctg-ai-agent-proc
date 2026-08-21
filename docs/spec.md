@@ -11,11 +11,12 @@ Every requirement has an ID and a status:
 
 | Status | Meaning |
 | --- | --- |
-| **Covered** | Asserted by the hermetic conformance suite today. |
+| **Covered** | Asserted by a hermetic test suite today. |
 | **Missing** | Contract is defined and stable, but no test asserts it. Should be added to the suite. |
 | **Blocked** | Behavior exists in code but the contract is undecided. Testing it would freeze an accidental behavior. Resolved by the referenced gap in Part II. |
 
-Test citations refer to files under `tests/conformance/`.
+Test citations refer to files under `tests/conformance/` unless another suite
+path is included.
 
 If the code and this document disagree, update whichever side is intentionally
 wrong before expanding behavior.
@@ -30,6 +31,8 @@ The root package exports:
 
 ```ts
 export {
+    CTGAgentProc,
+    CTGAgentProcError,
     LLMPrompt,
     LLMPromptError,
     LLMPromptTemplate,
@@ -43,6 +46,11 @@ export {
 };
 
 export type {
+    CTGAgentProcAgentFunction,
+    CTGAgentProcAgentProps,
+    CTGAgentProcConfig,
+    CTGAgentProcErrorData,
+    CTGAgentProcErrorLogFormatter,
     LLMPromptErrorData,
     LLMPromptErrorLogFormatter,
     LLMPromptOptions,
@@ -67,8 +75,8 @@ No other source modules are part of the public package contract.
 
 | ID | Requirement | Status |
 | --- | --- | --- |
-| EXP-01 | The package root exports exactly the ten runtime names above. | **Covered** — `exports.ts` "root exports public runtime names". |
-| EXP-02 | The type exports above compile against the package entry point. | **Missing** — enforced only indirectly by `npm run check`; no test imports every exported type. |
+| EXP-01 | The package root exports exactly the twelve runtime names above. | **Covered** — `exports.ts` "root exports public runtime names". |
+| EXP-02 | The type exports above compile against the package entry point. | **Covered** — `tests/types/publicExports.ts`; run with `npm run test:types`. |
 
 ## 2. LLMRunner
 
@@ -148,7 +156,7 @@ static init<C, T extends LLMRunner>(this: new (config: C) => T, config: C): T
 | --- | --- | --- |
 | RUN-12 | `init()` on a subclass returns an instance of that subclass. | **Covered** — `runner.ts` "static init returns subclass instance". |
 | RUN-13 | `init()` may be called with no arguments when the concrete constructor accepts omitted config. | **Covered** — `runner.ts`, `claudeRunner.ts`, `codexRunner.ts`. |
-| RUN-14 | `LLMRunner.init()` without config is a compile-time error (base constructor requires `command`). | **Missing** — type-level only; could be asserted with a `@ts-expect-error` compile check. |
+| RUN-14 | `LLMRunner.init()` without config is a compile-time error (base constructor requires `command`). | **Covered** — `tests/types/runnerInit.ts`; run with `npm run test:types`. |
 
 ## 3. Concrete Runners
 
@@ -343,6 +351,134 @@ template.apply(text: string): string
 | PTERR-04 | `data` is frozen shallowly. | **Covered** — `errorClass.ts` "prompt template error data is shallow frozen" and `promptTemplate.ts` "error data is shallow frozen". |
 | PTERR-05 | `is()` narrows correctly. | **Covered** — `errorClass.ts` "is narrows prompt template errors". |
 | PTERR-06 | `log()` default and custom-formatter behavior matches the other structured error contracts. | **Covered** — `errorClass.ts` "prompt template error log writes default output" and "prompt template error log accepts custom formatter"; `promptTemplate.ts` error log tests. |
+
+## 9. CTGAgentProc
+
+`CTGAgentProc` is the orchestration layer over `hive-queue-js`.
+It should subclass `HiveQueue` rather than wrap or reimplement queue
+semantics. `HiveQueue` owns task routing, worker registration, CPS
+continuation with `done()`, delegation with `send()`, queue halting, and shared
+environment access. `CTGAgentProc` adds agent-specific runner and prompt
+registries plus an `agent()` registration helper.
+
+### 9.1 Upstream Queue Dependency
+
+`hive-queue-js` v0.2.1 is consumed through its package name, `hive-queue`.
+The package root exports the queue class plus public task/config/worker types,
+including `HiveQueueWorkerProps`. `CTGAgentProcAgentFunction` extends
+`HiveQueueWorkerProps` rather than duplicating Hive worker props.
+
+Relevant upstream exports:
+
+```ts
+export { HiveQueue, HiveQueueError };
+
+export type {
+    HiveQueueWorkerProps,
+    HiveQueueWorkerFunction,
+    HiveQueueTask,
+    HiveQueueConfig,
+    HiveQueueEnv
+};
+```
+
+### 9.2 Construction And Registries
+
+Public shape:
+
+```ts
+class CTGAgentProc<Env = unknown> extends HiveQueue<Env> {
+    runners: Map<string, LLMRunner>;
+    prompts: Map<string, LLMPrompt>;
+
+    runner(id: string, runner: LLMRunner): this;
+    prompt(id: string, prompt: LLMPrompt): this;
+    getPrompt(id: string): LLMPrompt;
+
+    agent(
+        agentID: string,
+        runnerID: string,
+        fn: CTGAgentProcAgentFunction<Env>
+    ): this;
+
+    static init<Env = unknown>(
+        config?: CTGAgentProcConfig<Env>
+    ): CTGAgentProc<Env>;
+}
+
+interface CTGAgentProcConfig<Env = unknown> extends HiveQueueConfig<Env> {
+    runners?: Map<string, LLMRunner>;
+    prompts?: Map<string, LLMPrompt>;
+}
+```
+
+| ID | Requirement | Status |
+| --- | --- | --- |
+| AGP-01 | `CTGAgentProc` extends `HiveQueue`, preserving HiveQueue task routing, lifecycle, halting, and environment semantics. | **Covered** — `agentProc.ts` "constructor extends HiveQueue and initializes registries" and "agent receives Hive props and agent context". |
+| AGP-02 | Constructor initializes `runners` and `prompts` maps when omitted. | **Covered** — `agentProc.ts` "constructor extends HiveQueue and initializes registries". |
+| AGP-02A | Constructor accepts provided `runners` and `prompts` maps by reference. | **Covered** — `agentProc.ts` "constructor accepts provided registries". |
+| AGP-02B | `CTGAgentProc.init(config?)` returns a `CTGAgentProc` instance. | **Covered** — `agentProc.ts` "static init returns CTGAgentProc". |
+| AGP-03 | `runner(id, runner)` registers a named `LLMRunner` and returns `this`. | **Covered** — `agentProc.ts` "runner registers and returns processor". |
+| AGP-04 | Duplicate runner IDs throw `CTGAgentProcError("RUNNER_ALREADY_BOUND")`. | **Covered** — `agentProc.ts` "duplicate runner id throws agent proc error". |
+| AGP-05 | `prompt(id, prompt)` registers a named `LLMPrompt` and returns `this`. | **Covered** — `agentProc.ts` "prompt registers and returns processor". |
+| AGP-06 | Duplicate prompt IDs throw `CTGAgentProcError("PROMPT_ALREADY_BOUND")`. | **Covered** — `agentProc.ts` "duplicate prompt id throws agent proc error". |
+| AGP-07 | `getPrompt(id)` returns the registered prompt for `id`. | **Covered** — `agentProc.ts` "prompt registers and returns processor". |
+| AGP-08 | `getPrompt(id)` throws `CTGAgentProcError("UNKNOWN_PROMPT")` for an unknown prompt ID. | **Covered** — `agentProc.ts` "unknown prompt throws agent proc error". |
+
+### 9.3 Agent Registration
+
+`agent(agentID, runnerID, fn)` registers a Hive worker under `agentID`. The
+agent function receives the normal Hive worker props plus agent-specific
+context.
+
+Agent function shape:
+
+```ts
+type CTGAgentProcAgentFunction<Env = unknown> = (
+    props: HiveQueueWorkerProps<Env> & {
+        agentID: string;
+        runnerID: string;
+        runner: LLMRunner;
+        getPrompt(id: string): LLMPrompt;
+    }
+) => Promise<void>;
+```
+
+| ID | Requirement | Status |
+| --- | --- | --- |
+| AGP-09 | `agent(agentID, runnerID, fn)` validates that `runnerID` is already registered and fails fast if it is not. | **Covered** — `agentProc.ts` "agent rejects unknown runner before worker registration". |
+| AGP-10 | Unknown runner IDs passed to `agent()` throw `CTGAgentProcError("UNKNOWN_RUNNER")`. | **Covered** — `agentProc.ts` "agent rejects unknown runner before worker registration". |
+| AGP-11 | `agent()` delegates worker registration to `HiveQueue.worker(agentID, wrappedFn)` and returns `this`. | **Covered** — `agentProc.ts` "agent registers a HiveQueue worker and returns processor". |
+| AGP-12 | Duplicate `agentID` handling follows `HiveQueue.worker()` duplicate worker behavior. | **Covered** — `agentProc.ts` "agent delegates duplicate agent ids to HiveQueue worker behavior". |
+| AGP-13 | The wrapped agent function receives all normal Hive worker props unchanged. | **Covered** — `agentProc.ts` "agent receives Hive props and agent context". |
+| AGP-14 | The wrapped agent function receives `agentID`, `runnerID`, the registered `runner` instance, and `getPrompt(id)`. | **Covered** — `agentProc.ts` "agent receives Hive props and agent context". |
+| AGP-15 | `runner` is injected as the registered `LLMRunner` instance rather than as a convenience wrapper. | **Covered** — `agentProc.ts` "agent receives Hive props and agent context". |
+| AGP-16 | Prompt access inside agent functions goes through `getPrompt(id)` rather than exposing the raw prompt map. | **Covered** — `agentProc.ts` "agent receives Hive props and agent context". |
+| AGP-17 | Agents can delegate tasks to other registered agents through the inherited Hive `send()`/`done()` continuation flow. | **Covered** — `orchestration/agentProc.ts` "delegates between registered agents". |
+| AGP-18 | Multiple delegated agent tasks preserve HiveQueue FIFO task order. | **Covered** — `orchestration/agentProc.ts` "preserves delegated FIFO order". |
+| AGP-19 | Agent functions can run a registered `LLMPrompt` with the injected registered `LLMRunner`. | **Covered** — `orchestration/agentProc.ts` "runs registered prompt with injected runner". |
+| AGP-20 | `getPrompt()` lookup failures thrown during agent execution halt the queue with `CTGAgentProcError("UNKNOWN_PROMPT")`. | **Covered** — `orchestration/agentProc.ts` "prompt lookup failures halt with agent proc error". |
+| AGP-21 | Agents can use inherited Hive `getEnv()`/`setEnv()` shared state to track retry counts across delegated attempts. | **Covered** — `orchestration/agentProc.ts` "stores retry count in env". |
+
+### 9.4 CTGAgentProcError
+
+`CTGAgentProc` has its own structured error class for registration and lookup
+failures that are not native `HiveQueueError` cases.
+
+Error types:
+
+```text
+RUNNER_ALREADY_BOUND
+PROMPT_ALREADY_BOUND
+UNKNOWN_RUNNER
+UNKNOWN_PROMPT
+```
+
+| ID | Requirement | Status |
+| --- | --- | --- |
+| AGPERR-01 | `CTGAgentProcError` follows the existing structured error pattern used by runner, prompt, template, and token metric errors. | **Covered** — `errorClass.ts` agent proc error tests. |
+| AGPERR-02 | Duplicate runner and prompt registration failures throw `CTGAgentProcError`, not `HiveQueueError`. | **Covered** — `agentProc.ts` duplicate runner/prompt tests. |
+| AGPERR-03 | Unknown runner and prompt lookup failures throw `CTGAgentProcError`, not `HiveQueueError`. | **Covered** — `agentProc.ts` unknown runner/prompt tests. |
 
 ---
 
@@ -575,10 +711,10 @@ semantics. Avoid a vague dry-run API.
 
 ### G-14. Local model runner & orchestration layer (spec.md §8.6–8.7)
 
-`AgentProc` orchestration and local-model runner design are future roadmap
-items with no testable public surface yet. Planned in `docs/ROADMAP.md` as
-Phase 2 for `AgentProc`, with `OllamaRunner` tracked separately under
-Additional Considerations.
+`CTGAgentProc` now has a testable public surface and is covered by conformance,
+type, and orchestration suites. Local-model runner design remains future
+roadmap work, with `OllamaRunner` tracked separately under Additional
+Considerations.
 
 ---
 
@@ -587,9 +723,7 @@ Additional Considerations.
 Ordered so the suite hardens the *decided* contract first. All items are
 hermetic (no live CLIs) unless noted.
 
-1. **Type-level surface checks** — EXP-02 and RUN-14 need a dedicated test
-   typecheck config or equivalent `tsc --noEmit` fixture coverage.
-2. **Maintain opt-in live parity and integration coverage** — PAR-01/02 are
+1. **Maintain opt-in live parity and integration coverage** — PAR-01/02 are
    covered by the `CTG_AGENT_PROC_LIVE=1` suite, but this remains an ongoing
    maintenance area because external CLI flags, auth, and model behavior can
    drift.

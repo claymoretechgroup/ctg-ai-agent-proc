@@ -729,6 +729,13 @@ export interface LLMRunnerRunConfig {
 }
 ```
 
+`source` is the **runner class name** — `"ClaudeRunner"`, `"CodexRunner"`,
+or the name of a consumer's own `LLMRunner` subclass — taken from the
+instance's constructor by the protected `streamSource()` hook, which a
+subclass may override. The published package preserves class names
+through minification (`keepNames`) so this holds for `dist` exactly as
+for source; `tests/package/` loads the built package and checks it.
+
 `streamOutput` defaults to `false` so existing callers retain the current
 `execFile` behavior. Handler presence does not implicitly switch execution
 paths. Callers must explicitly set `streamOutput: true`.

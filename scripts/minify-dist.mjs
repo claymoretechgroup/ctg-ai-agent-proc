@@ -25,6 +25,7 @@ await Promise.all(files.map(async (file) => {
         format: "esm",
         legalComments: "none",
         minify: true,
+        keepNames: true,  // class/function .name survives minification; streamSource() and error names depend on it
         platform: "node",
         target: "es2022"
     });
